@@ -37,7 +37,7 @@
 (A soma, ~9,4 mi, é de onde vem o volume "medido" de `venda` citado na visão geral — é **derivado**.)
 
 ⚠️ **`venda.status = 'G'` NÃO está decodificado.** Só o volume foi medido (~23 mil). O rótulo
-"Estornada" que circula vem do `CASE` do DW sobre **`itemvenda.status`** — **outra tabela**, e
+"Estornada" que circula vem de um mapeamento de **`itemvenda.status`** — **outra tabela**, e
 [11-glossario.md](11-glossario.md) avisa que o mesmo caractere significa coisas diferentes em
 tabelas diferentes. 📌 **Lacuna:** confirmar na tela do ERP antes de tratar `G` como estorno.
 
@@ -52,7 +52,7 @@ tabelas diferentes. 📌 **Lacuna:** confirmar na tela do ERP antes de tratar `G
 | `embalagemid` | bigint FK | → `embalagem.id` (**nunca `produto`**) |
 | `unidadenegocioid` | bigint FK | → `unidadenegocio` |
 | `itemorcamentoid` | bigint FK | → `itemorcamento` (nullable) |
-| `status` | char(1) | `'F'` **Fechado**, `'C'` Cancelado, `'D'` Devolvido, `'G'` Estornado (rótulos do `CASE` do `.ktr` do DW — note que aqui é "Fechado", não "Finalizado" como em `venda`) |
+| `status` | char(1) | `'F'` **Fechado**, `'C'` Cancelado, `'D'` Devolvido, `'G'` Estornado (rótulos observados em extrações do ERP — note que aqui é "Fechado", não "Finalizado" como em `venda`) |
 | `quantidade` | numeric | |
 | `valorunitario` | numeric | ⚠️ **preço de TABELA, não o negociado** (ver abaixo) |
 | `valortotal` | numeric | Total da linha, já com desconto |
@@ -67,8 +67,8 @@ tabelas diferentes. 📌 **Lacuna:** confirmar na tela do ERP antes de tratar `G
 
 ### `itemvenda.origemdesconto` — decodificação (10 de 11 valores)
 
-Decodificada por correlação e confirmada pelo mapeamento usado no DW. **Não é a lista completa dos
-valores que existem na base** — ver `F` logo abaixo da tabela:
+Decodificada por correlação e confirmada por um mapeamento observado em extrações do ERP. **Não é a
+lista completa dos valores que existem na base** — ver `F` logo abaixo da tabela:
 
 | Valor | Significado |
 | --- | --- |
@@ -82,10 +82,11 @@ valores que existem na base** — ver `F` logo abaixo da tabela:
 | `R` | Caderno de oferta — Markup sobre preço referencial |
 | `C` | Caderno de oferta — Markup sobre custo |
 | `L` | Caderno de oferta — Leve/Pague |
-| **`F`** | ⚠️ **NÃO DECODIFICADO** — existe na base (volume baixo) e **não aparece no `CASE` do DW**, que o joga em "Origem desconhecida". 📌 Lacuna |
+| **`F`** | ⚠️ **NÃO DECODIFICADO** — existe na base (volume baixo) e **não aparece em nenhum dos mapeamentos observados**, que o jogam em "Origem desconhecida". 📌 Lacuna |
 
 ⚠️ Os códigos `D`, `C`, `L` e `F` são de **natureza não 100% confirmada** (baixo volume); os
-significados de `D`/`C`/`L` na tabela acima vêm do `CASE` do DW, não de correlação medida.
+significados de `D`/`C`/`L` na tabela acima vêm desse mapeamento observado numa extração, não de
+correlação medida.
 
 Volumes reais (90 dias, **dentro de orçamentos já negociados**): `M`=17.345 · `P`=6.352 ·
 `D`=4.304 · `B`=1.682 · `S`=1.205 · `Q`=282 · `L`=58 · `C`=13.
@@ -95,6 +96,22 @@ Volumes reais (90 dias, **dentro de orçamentos já negociados**): `M`=17.345 ·
 Confirmado com amostra real: item com `itemorcamento.precovenda = 988,23` e `valortotal = 728,45`
 (desconto de R$ 259,78) tinha `itemvenda.valorunitario = 988,23` — o preço **cheio**.
 O preço unitário efetivamente cobrado é `valortotal / quantidade`.
+
+### ⚠️ `itemvenda.valortotal` nem sempre reflete o desconto
+
+Há um caso conhecido em que `valortotal` **não** incorpora o desconto: quando
+`desconto = 0` **e** `valordesconto > 0` (desconto gravado em valor, não em percentual). Uma
+extração de venda tratava isso explicitamente, recalculando o valor da linha:
+
+```sql
+CASE WHEN (iv.desconto = 0 AND iv.valordesconto > 0)
+     THEN iv.quantidade * (iv.valorunitario - iv.valordesconto)
+     ELSE iv.valortotal END AS valor
+```
+
+⚠️ **Observado numa extração, não validado ao vivo** — antes de adotar o recálculo, medir quantas
+linhas caem nessa condição na base em uso e conferir uma delas contra a tela do ERP. A fórmula
+canônica de receita continua sendo `SUM(iv.valortotal)`.
 
 ### ⚠️ Um `itemorcamento` pode gerar VÁRIOS `itemvenda`
 

@@ -192,6 +192,16 @@ recebimentocrediario (unidadenegocioid, usuarioid, datahora)
               └── fatura (faturaorigemid)
 ```
 
+**O recebimento é decomposto em 4 parcelas de valor** — principal (`valorrecebimento`) + `valorjuros`
++ `valormulta` + `valortaxaconvenio`. Somar só `valorrecebimento` subestima o que entrou no caixa;
+somar tudo mistura receita financeira com amortização do título. Escolher explicitamente conforme a
+pergunta.
+
+⚠️ **`itemrecebimentocrediario.status = 'A'` NÃO significa "aberto" aqui** — o item já é o
+recebimento efetuado, então `'A'` se comporta como "ativo/válido" (o oposto de estornado). É mais um
+caso do mesmo `char(1)` com significado diferente por tabela: em `crediarioreceber`, `'A'` é mesmo
+"a receber". ⚠️ Inferido pelo uso, **não validado ao vivo**.
+
 ## Cartão e conciliação de cartão
 
 | Tabela | Conteúdo |
@@ -241,6 +251,13 @@ Resultado > 02.1 - Custo Operacional > 02.1 - FORNECEDORES > 7.01 - MEDICAMENTO
 só 2–3 baldes grossos ("Custo Operacional"/"Despesas Operacionais"). O segmento útil para filtro
 operacional era o **3º**. Sempre inspecionar `caminho` cru antes de escolher o índice, e proteger com
 `NULLIF(..., '')`.
+
+⚠️⚠️ **A PROFUNDIDADE do `caminho` não é a mesma em toda base.** Numa extração observada os níveis
+foram lidos com `split_part(caminho,' > ', 3/4/5/6)` — **um segmento a mais** que os 2/3/4 usados
+acima, o que indica uma raiz adicional antes de `Resultado > `. Não foi validado ao vivo qual das
+duas formas é a corrente. **Consequência prática:** nunca copiar um índice de `split_part` de um
+relatório para outro; rodar `SELECT caminho FROM planocontas LIMIT 20` na base em uso e contar os
+segmentos antes de escolher.
 
 ⚠️ Ao casar plano de contas por texto num `$queryRaw`, normalizar espaços com
 **`regexp_replace(caminho,'[[:space:]]+',' ')`** — `\s` num template literal vira escape inválido e

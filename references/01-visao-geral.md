@@ -1,7 +1,7 @@
 # ERP Alpha 7 — Visão geral e conceitos fundamentais
 
-> Base de conhecimento destilada de documentação de projeto real (rede de farmácias) e de um Data
-> Warehouse construído sobre o mesmo ERP. Tudo aqui foi observado/validado contra bancos reais do
+> Base de conhecimento destilada de documentação de projeto real (rede de farmácias) e de extrações
+> SQL rodadas contra o banco do próprio ERP. Tudo aqui foi observado/validado contra bancos reais do
 > Alpha 7; o que for incerto está marcado como tal.
 
 ## Sumário
@@ -249,4 +249,3 @@ Detalhes em [07-compras-precificacao.md](07-compras-precificacao.md).
 | [09-consultas-e-performance.md](09-consultas-e-performance.md) | joins canônicos, padrões de query, cuidados de performance, conexão/túnel SSH, particularidades do Postgres nessa base |
 | [10-armadilhas.md](10-armadilhas.md) | catálogo sintoma → causa → correção → como evitar |
 | [11-glossario.md](11-glossario.md) | vocabulário do negócio ↔ tabela/coluna/valor |
-| [12-dw-pentaho.md](12-dw-pentaho.md) | modelo dimensional do DW construído sobre o Alpha 7, com as queries-fonte reais |

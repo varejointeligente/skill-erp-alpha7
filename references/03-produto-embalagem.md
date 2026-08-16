@@ -130,6 +130,13 @@ Agrupar por `cl.nome` dá ~100 subcategorias — granular demais para visão exe
 direto (fan-out). O `MIN(...)` acima serve para exibição (1 linha por produto); para **filtrar**,
 usar uma CTE `DISTINCT (produtoid, chave)` + `EXISTS`.
 
+⚠️⚠️ **Consequência direta: `JOIN classificacao ... AND classificacao.principal` como filtro ÚNICO
+não garante uma linha por produto.** Como `principal` é `true` em ~100 nós, um produto pendurado em
+mais de um nó `principal` **duplica** — e, se a query tiver um `SUM`, o valor infla sem nenhum sinal
+de erro. Esse padrão aparece em queries herdadas (inclusive nas geradas pelo próprio ERP); ao
+reaproveitar uma delas, trocar pelo par `caminho ILIKE 'PRINCIPAL > %'` +
+`MIN(split_part(caminho,' > ',2))` agrupado por produto.
+
 ### As 9 categorias MACRO (nomes exatos observados em UMA base)
 
 ⚠️ **Isto é cadastro do cliente, não estrutura do ERP.** A árvore de `classificacao` é livre — outra

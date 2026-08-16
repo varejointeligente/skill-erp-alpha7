@@ -103,7 +103,7 @@ Não existe coluna `apelido`. ⚠️ Unidades sem o padrão `"XX - …"` (as nã
 cadastradas só com a razão/nome fantasia) geram um código de 2 letras "aleatório" — aceitável,
 normalmente já são filtradas por `receita > 0`.
 
-**Nome reduzido alternativo** (usado no DW), que corta até o 2º hífen:
+**Nome reduzido alternativo** (variante observada em extrações), que corta até o 2º hífen:
 
 ```sql
 CASE
@@ -152,8 +152,8 @@ GROUP BY UPPER(TRIM(un.cidade))
 ### `entrega.status`
 
 ⚠️ Existem **dois mapeamentos** documentados a partir de fontes diferentes. O primeiro é o usado
-para métricas operacionais (backlog/pendência) e foi validado na prática; o segundo veio do DW.
-**Tratar o segundo como incerto.**
+para métricas operacionais (backlog/pendência) e foi validado na prática; o segundo foi **observado
+numa extração e nunca validado ao vivo**. **Tratar o segundo como incerto.**
 
 **Mapeamento operacional (validado):**
 
@@ -166,8 +166,24 @@ para métricas operacionais (backlog/pendência) e foi validado na prática; o s
 
 → **"Pendente de baixa" = `status IN ('A','B','D','H')` ÷ não canceladas (`status <> 'C'`)**.
 
-**Mapeamento do DW (⚠️ incerto, diverge do acima — usar com cautela):**
+**Mapeamento alternativo (⚠️ incerto, diverge do acima — usar com cautela):**
 `C`=Faturada · `D`=Enviada · `E`=Cancelada · `F`=Finalizada · `G`=Retornada.
+
+O conflito é grave nos dois valores que mais aparecem em filtro: `C` é **Cancelada** no mapeamento
+validado e **Faturada** no alternativo; `E` é **Entregue** num e **Cancelada** no outro. Ou seja,
+uma query que exclui canceladas por `status <> 'C'` está certa por um mapeamento e exclui justamente
+as faturadas pelo outro. 📌 **Lacuna:** conferir na tela do ERP.
+
+### ⚠️ Um `orcamento` pode ter MAIS DE UMA `entrega`
+
+A relação `orcamento → entrega` é **1:N**, não 1:1. Consequências:
+
+- Somar valor de venda com `JOIN entrega` no meio **infla** (fan-out) — ver
+  [10-armadilhas.md](10-armadilhas.md).
+- "A entrega desta venda" não é uma pergunta bem-posta: ou se escolhe uma
+  (`DISTINCT ON (orcamentoid) ... ORDER BY id DESC`) ou se agrega.
+- Para o filtro "esta venda TEM entrega", usar a CTE `DISTINCT` de vendas com entrega (ver
+  [02-vendas.md](02-vendas.md)), que já colapsa o N.
 
 ### Como chegar em loja e valor
 

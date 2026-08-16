@@ -57,6 +57,12 @@
 - **Correção:** `EXISTS` sobre uma CTE `DISTINCT (produtoid, chave)` para filtrar; `MIN(...)` +
   `GROUP BY produtoid` só para exibir.
 - **Como evitar:** separar "CTE de filtro" de "CTE de exibição".
+- ⚠️ **Variante que engana:** `JOIN classificacao ... AND classificacao.principal` **parece** resolver
+  o N:N (soa como "pega só a classificação principal"), mas `principal` é `true` em **~100 nós**
+  (macro, sub e folha). Produto pendurado em mais de um nó `principal` continua duplicando — e o
+  `SUM` continua inflado. Esse padrão aparece em queries herdadas e nas geradas pelo próprio ERP;
+  ao reaproveitar uma delas, **trocar por `caminho ILIKE 'PRINCIPAL > %'` + `MIN(split_part(...))`
+  agrupado por produto**. Ver [03-produto-embalagem.md](03-produto-embalagem.md).
 
 ### A5. `venda.cadernoofertaid` usado como "venda em oferta"
 
@@ -93,6 +99,38 @@
 - **Correção:** `orcamento.liberacaousuarionegociacaonegativaid → liberacaousuario.usuarioid → usuario → pessoa.nome`.
 - **Como evitar:** desconfiar de nome de coluna terminado em `id` que não bate — checar a cardinalidade
   do join antes de confiar.
+
+### A9. ⚠️⚠️ A MESMA tabela juntada duas vezes no `FROM` — fan-out puro
+
+- **Sintoma:** quantidade, valor e custo inflados numa proporção que não bate com nada; o resultado
+  parece só "um pouco alto demais".
+- **Causa real encontrada:** uma query de item de venda tinha `entrega` **duas vezes** no `FROM` —
+  uma com alias (`LEFT JOIN entrega e ON e.orcamentoid = orcamento.id`, usada no SELECT) e outra sem
+  alias (`LEFT JOIN entrega ON entrega.orcamentoid = v.orcamentoid`), **que não era usada em lugar
+  nenhum**. Como `orcamento → entrega` é **1:N**, o segundo join multiplica a linha do item por cada
+  entrega do orçamento — sem nenhuma contrapartida no resultado.
+- **Correção:** apagar o join que não contribui com coluna nenhuma. Se a tabela repetida for
+  necessária de fato, colapsar para 1 linha antes (`DISTINCT ON`, `EXISTS` ou CTE agregada).
+- **Como evitar:** ⚠️ **antes de somar, contar.** Rodar a query com `COUNT(*)` e comparar com o
+  `COUNT(*)` da tabela-base do período — se não bater, há fan-out. Vale para qualquer 1:N pendurado
+  numa query de agregação: `entrega`, `itemdevolucaovenda` (um `itemvenda` pode ter mais de uma
+  devolução parcial), `classificacaoproduto`, `contato`.
+
+### A10. ⚠️ `INNER JOIN` "decorativo" que filtra em silêncio
+
+- **Sintoma:** o total não fecha com o relatório nativo do ERP, e não há linha visivelmente errada —
+  há linhas **faltando**.
+- **Causa:** queries herdadas do Alpha 7 costumam trazer tabelas no `FROM` que **não contribuem com
+  nenhuma coluna do SELECT** (`unidadenegocio`, `usuario`, `caixa`, `fabricante`,
+  `classificacaoproduto`, `receitamedica`, `prescritor`). Sendo `INNER JOIN`, elas funcionam como
+  **filtro implícito de integridade**: produto sem fabricante cadastrado, item sem classificação ou
+  venda sem caixa vinculado somem do resultado sem aviso. Num schema quase sem FK declarada, órfão é
+  comum.
+- **Correção:** ao reaproveitar uma query dessas, revisar **cada** join: se não fornece coluna e não
+  é filtro intencional, apagar; se é filtro intencional, escrever como `WHERE ... IS NOT NULL`
+  explícito para ficar visível.
+- **Como evitar:** medir o custo do join antes de mantê-lo — `COUNT(*)` com e sem ele. É o mesmo
+  princípio de A3: **tabela que não contribui com coluna não deveria estar no `FROM`.**
 
 ## Status e códigos mal interpretados
 
@@ -154,8 +192,9 @@
 
 - **Sintoma:** contagens diferentes entre duas fontes de documentação.
 - **Causa:** o mapeamento operacional validado (`F`/`E` concluídas, `C` cancelada, `A`/`B`/`D`/`H`
-  pendentes) diverge do mapeamento usado no DW (`C`=Faturada, `D`=Enviada, `E`=Cancelada,
-  `F`=Finalizada, `G`=Retornada).
+  pendentes) diverge de um mapeamento alternativo observado numa extração e nunca validado ao vivo
+  (`C`=Faturada, `D`=Enviada, `E`=Cancelada, `F`=Finalizada, `G`=Retornada). Os dois se contradizem
+  exatamente em `C` e `E` — os valores que mais aparecem em filtro de cancelamento.
 - **Correção:** ⚠️ **incerto** — usar o mapeamento operacional (validado com dados de pendência) e
   confirmar contra a tela do ERP antes de qualquer decisão que dependa disso.
 
@@ -308,9 +347,14 @@
   `itemvenda + custoproduto` **80 s** · `itemvenda → movimentacaoestoque` pelo id
   (`itemvenda.movimentacaoestoqueid`, tentando usar o índice `id+custo+customedio`)
   **118 s — a PIOR**.
-- ⚠️ **O JOIN por `itemvenda.movimentacaoestoqueid` parece "barato" e não é.** É o caminho que o DW
-  em Pentaho usa (ver [12-dw-pentaho.md](12-dw-pentaho.md)), o que reforça a intuição errada — mas o
-  join por id contra 32 mi de linhas não compensa. Medição manda, não intuição.
+- ⚠️ **O JOIN por `itemvenda.movimentacaoestoqueid` parece "barato" e não é.** Ele *parece* a opção
+  óbvia — é join por id, e existe um índice `id + custo + customedio` que cobre exatamente as
+  colunas buscadas — e é por isso que aparece com tanta frequência em query herdada de extração de
+  CMV. Mas o join por id contra 32 mi de linhas **não compensa**: 118 s contra 54 s e 80 s das
+  alternativas. Medição manda, não intuição.
+- **O que continua válido desse caminho é a fonte, não a performance:**
+  `movimentacaoestoque.custo`/`.customedio` é o custo **do momento da venda** (≠ `custoproduto`, que
+  é o custo de hoje aplicado retroativamente).
 
 ### D8. Filtrar `itemvenda` direto por `cadernoofertaid`
 

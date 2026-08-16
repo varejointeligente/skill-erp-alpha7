@@ -62,7 +62,7 @@ estoque_prod_loja AS (
 | `datahora` | timestamp | Quando ocorreu |
 | `quantidade` | numeric | Quantidade movimentada |
 | `estoqueanterior` | numeric | Estoque antes |
-| `estoque` | numeric | Estoque depois (o **delta** aplicado, ver DW) |
+| `estoque` | numeric | Estoque depois (o **delta** aplicado) — é o valor somado ao reconstruir estoque numa data passada (ver o final deste arquivo) |
 | `custo` | numeric | **Custo unitário no momento** |
 | `customedio` | numeric | **Custo médio no momento** |
 | `precovenda` | numeric | **Preço de venda no momento** |
@@ -73,8 +73,8 @@ estoque_prod_loja AS (
 ### Tipos de movimentação (`tipomovimentacaoestoque`)
 
 ⚠️ **São duas listas independentes, e a correspondência entre elas NÃO foi verificada.** Os **ids**
-com descrição vieram de inspeção do ERP; os **códigos** (`tipomovimentacaoestoque.codigo`) vieram
-das queries do DW, que nunca trazem o `id` junto. Ninguém fez o `SELECT id, codigo, descricao FROM
+com descrição vieram de inspeção do ERP; os **códigos** (`tipomovimentacaoestoque.codigo`) vieram de
+extrações do ERP, que nunca trazem o `id` junto. Ninguém fez o `SELECT id, codigo, descricao FROM
 tipomovimentacaoestoque` que ligaria as duas — **confirmar no banco antes de usar código e id como
 sinônimos.**
 
@@ -95,12 +95,14 @@ sinônimos.**
 | 31 | Baixa de Estoque |
 | 32 | Devolução de Compra |
 
-**Lista 2 — códigos usados no DW (`tipomovimentacaoestoque.codigo`), sem id associado:**
+**Lista 2 — códigos observados em extrações do ERP (`tipomovimentacaoestoque.codigo`), sem id
+associado:**
 
 `RF`, `ERF`, `RTR`, `TRF`, `ETR`, `VND`, `DVV`, `EVND`, `EEV`, `BAIXA`, `DVC`, `CES`, `CEE`.
 
-No DW esses códigos aparecem apenas agrupados por **efeito no saldo** (ver
-[12-dw-pentaho.md](12-dw-pentaho.md)): `('RF','RTR','ETR','DVV','EVND','EEV')` de um lado,
+Nessas extrações os códigos aparecem apenas agrupados por **efeito no saldo** (ver
+"Reconstruir estoque numa data passada", no fim deste arquivo):
+`('RF','RTR','ETR','DVV','EVND','EEV')` de um lado,
 `('ERF','TRF','VND','BAIXA','DVC')` do outro, com `CES`/`CEE` isolados. Os nomes sugerem a leitura
 óbvia (`RF`=recebimento físico, `VND`=venda, `DVV`=devolução de venda, `CES`/`CEE` = correção de
 estoque saída/entrada), mas isso é **inferência pelo nome, não medição** — e há mais códigos (13)
@@ -125,11 +127,16 @@ Medição real de três alternativas para calcular CMV histórico:
 Filtrar um mês só **não ajuda** — o Seq Scan varre tudo de qualquer jeito.
 Como o ERP é somente leitura, não dá para criar índice.
 
-⚠️ **A terceira linha é contraintuitiva e vale destacar:** "join por PK" parece o caminho barato, e é
-o que o DW em Pentaho faz (`fato_venda`, ver [12-dw-pentaho.md](12-dw-pentaho.md)) — mas contra 32,2
-mi de linhas ficou **mais que o dobro** do Seq Scan direto. Se encontrar texto (aqui ou em outro
-lugar) chamando esse JOIN de "a forma barata de obter custo histórico", é a intuição falando, não a
-medição.
+⚠️ **A terceira linha é contraintuitiva e vale destacar:** o JOIN por
+`itemvenda.movimentacaoestoqueid` **parece** a opção óbvia — é join por id, contra um índice que
+inclui exatamente as colunas de custo — e por isso é o caminho que aparece com mais frequência em
+query herdada de extração de CMV. Mas contra 32,2 mi de linhas ele ficou **mais que o dobro** do Seq
+Scan direto. Se encontrar texto (aqui ou em outro lugar) chamando esse JOIN de "a forma barata de
+obter custo histórico", é a intuição falando, não a medição.
+
+(O que **continua válido** é a *fonte*: `movimentacaoestoque.custo`/`.customedio` alcançados por
+`itemvenda.movimentacaoestoqueid` são o custo **do momento da venda**, não o custo de hoje aplicado
+retroativamente. O problema é só o custo de execução do caminho.)
 
 → **Consequência de arquitetura:** métrica que depende de `movimentacaoestoque` por período precisa
 de **snapshot/cache diário**, não pode ser calculada a cada request.
@@ -228,6 +235,42 @@ produtos com qualquer suspensão de compra. **Não usa o cadastro de estoque mí
 deliberadamente. Usar CTEs separadas (`vendidos_ruptura_60d` e `vendidos_cobertura_90d`) para não
 acoplar as duas janelas.
 
+### ⚠️ `historicovenda` — agregado de venda pré-computado pelo próprio ERP
+
+Existe uma tabela **`historicovenda`** (`unidadenegocioid`, `embalagemid`, `quantidade`, `data`) que
+guarda venda já agregada por loja+embalagem+data. Se a cobertura se confirmar, ela é
+**potencialmente muito mais barata** que varrer `venda + itemvenda` para calcular demanda histórica:
+
+```sql
+SELECT hv.unidadenegocioid, hv.embalagemid,
+       SUM(hv.quantidade)        AS quantidade,
+       SUM(hv.quantidade) / 90.0 AS demanda
+FROM historicovenda hv
+WHERE hv.data > (CURRENT_DATE - INTERVAL '90 days')
+GROUP BY hv.unidadenegocioid, hv.embalagemid
+```
+
+⚠️ **Observada numa extração, nunca validada ao vivo.** Não se sabe desde quando ela é populada, se
+cobre todas as lojas, nem se o `quantidade` já é líquido de devolução. 📌 **Lacuna:** medir cobertura
+(comparar um mês de `historicovenda` contra `venda + itemvenda` do mesmo mês) **antes** de trocar a
+fonte de demanda de qualquer métrica.
+
+### Variante de ruptura observada em extração (para explicar divergência)
+
+Se alguém trouxer um número de ruptura que não bate com o canônico acima, esta é a variante já vista
+em uso — útil só para reconciliar, **não** para substituir a métrica validada:
+
+| Aspecto | Variante observada | Canônico |
+| --- | --- | --- |
+| Janela de demanda | 90 dias | **60 dias** |
+| Granularidade | embalagem | **produto** (`SUM(estoque)` agregado) |
+| Condição de estoque | `estoque = 0` | `SUM(estoque) <= 0` (inclui negativo) |
+| Fonte de demanda | `historicovenda` | `venda` + `itemvenda` |
+| Filtro de tipo | só `p.status='A'` | também `p.tipo='M'` |
+| Preço da venda perdida | `embalagem.precoreferencial` | preço médio unitário praticado |
+
+A exclusão por `suspendecompraprodutounidadenegocio` aparece nas duas.
+
 ### Complemento: "pedido enviado, mas o item não chegou" (14 dias)
 
 Sinal mais específico que "ninguém tentou repor". Para cada produto+loja:
@@ -320,7 +363,20 @@ recebimentotransferencia.datahora → recebimento confirmado no DESTINO
   correlação com nenhum usuário do pedido), `status`.
 - `itemtransferencia`: `embalagemid`, `quantidade`, `valorunitario`, `valortotal`,
   `movimentacaoestoqueid`, `status` (`'E'`, `'R'`, `'S'` observados).
+- `itemrecebimentotransferencia`: `recebimentotransferenciaid`, `embalagemid`, `status`, e
+  **`movimentacaoestoqueid` próprio** — o item recebido aponta para a movimentação de estoque que
+  ele gerou no destino (não é preciso passar pelo item enviado para chegar no custo).
 - `estornoitemtransferencia` — estorno por item.
+
+⚠️ **Não há FK do item recebido para o item enviado.** Para casar
+`itemrecebimentotransferencia` com `itemtransferencia` é preciso usar o par
+**`(transferenciaid, embalagemid)`** — o que significa que uma transferência com a mesma embalagem
+em duas linhas não casa de forma determinística.
+
+**Filtro de "transferência recebida" observado em extrações:** `transferencia.status = 'R'` +
+`itemtransferencia.status IN ('E','R','S')` + `itemrecebimentotransferencia.status = 'F'`.
+⚠️ Nenhum desses valores está decodificado em nenhuma fonte — é o filtro que se viu em uso,
+**observado numa extração, não validado ao vivo**. Conferir contra a tela antes de depender dele.
 - ⚠️ **`transferencia.notafiscalid` NUNCA é preenchido para transferência** (0% de cobertura). A
   nota fica em **`recebimentotransferencia.notafiscalid`** (~80% de cobertura entre as transferências
   com solicitação).
@@ -406,7 +462,7 @@ pendência) — não dá para usar null-check aqui.
 
 ## Reconstruir estoque numa data passada
 
-Padrão usado pelo DW (fato de estoque diário). Pega, para cada (loja, embalagem), **a última
+Padrão usado em snapshot diário de estoque. Pega, para cada (loja, embalagem), **a última
 movimentação antes do corte**, com desempate por prioridade de tipo:
 
 ```sql
@@ -447,5 +503,9 @@ GROUP BY 1,2,3
 HAVING SUM(me.estoque) <> 0;
 ```
 
-> Nota: o `$1` era um parâmetro posicional do Pentaho (`?`) alimentado por uma query que devolvia a
-> data-base do processamento. `me.estoque` aqui é o saldo resultante gravado na movimentação.
+> Nota: `$1` é a data-base do corte. `me.estoque` aqui é o saldo resultante gravado na movimentação.
+>
+> **Prioridade de desempate** (quando há várias movimentações no mesmo timestamp): entradas
+> (`RF`, `RTR`, `ETR`, `DVV`, `EVND`, `EEV`) → `CES` (correção de estoque saída) → `CEE` (correção
+> de estoque entrada) → saídas (`ERF`, `TRF`, `VND`, `BAIXA`, `DVC`). Sem esse desempate, duas
+> movimentações no mesmo segundo produzem saldo diferente a cada execução.

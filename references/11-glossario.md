@@ -46,6 +46,7 @@
 | **Suspensão de compra** | `suspendecompraprodutounidadenegocio` |
 | **Ruptura** | vendeu 60d **e** `SUM(estoque) <= 0` **e** sem suspensão |
 | **Cobertura de estoque** | `estoque ÷ (qtd_vendida_90d ÷ 90)` |
+| **Demanda histórica (agregado pronto)** | `historicovenda` (loja+embalagem+data) — ⚠️ cobertura nunca medida, ver [04-estoque.md](04-estoque.md) |
 | **Giro** | `365 ÷ cobertura` |
 | **Devolução de venda** | `movimentacaoestoque` tipo 27 · `devolucaovenda` (ligada ao cliente) |
 | **Devolução de compra** | `devolucaocompra` + `devolucaocompraitem` |
@@ -115,7 +116,7 @@
 | `venda` | `C` | Cancelada (~221 mil) | ✅ |
 | `venda` | `D` | **Devolvida por inteiro** (~10 mil) | ✅ |
 | `venda` | `G` | **NÃO CONFIRMADO** — só o volume foi medido (~23 mil). "Estornada" é empréstimo do `G` de `itemvenda` (**outra tabela**) | ⚠️ |
-| `itemvenda` | `F` / `C` / `D` / `G` | Fechado / Cancelado / Devolvido / Estornado (rótulos do `CASE` do DW) | ✅ |
+| `itemvenda` | `F` / `C` / `D` / `G` | Fechado / Cancelado / Devolvido / Estornado (rótulos observados em extrações do ERP) | ✅ |
 | `produto` | `A` / `I` | Ativo / Inativo | ✅ |
 | `produto.tipo` | `M` / `S` / `T` | Mercadoria / Serviço / Serviço tomado (outro = ajuste fiscal) | ✅ |
 | `unidadenegocio` | `A` / `I` | Ativa / Inativa | ✅ |
@@ -136,7 +137,8 @@
 | `pedidocompra.origem` | `F`,`A`,`L`,`B`,`G`,`K` | **NÃO DECODIFICADOS** | ❌ |
 | `pedidotransferencia` | `A` / `C` / `D` / `B` | Aberto/pendente / Concluído / Cancelado / Concluído por outra via | ✅ |
 | `pedidotransferencia.origem` | `A` / `C` / `D` / `B` | Sugestão Transferência (~99%) / Sugestão Compra / Transferência Automatizada / Encomenda | ✅ |
-| `itemtransferencia` | `E`, `R`, `S` | valores observados, não decodificados em detalhe | ⚠️ |
+| `itemtransferencia` | `E`, `R`, `S` | valores observados, não decodificados em detalhe — os três juntos foram vistos em uso como filtro de "item de transferência recebida" | ⚠️ |
+| `transferencia` | `R` | valor observado em uso como filtro de "transferência recebida" — **não decodificado** | ❌ |
 | `devolucaocompra` | `F` / `C` / `A` / `E` | Finalizada / Cancelada / Aberta (rara) / raro | ⚠️ `A` inferido por analogia |
 | `creditofornecedor` | `A` / `B` / `D` / `C` | Aberto/pendente / Baixado / Cancelado / ruído (1 registro) | ✅ |
 | `baixaestoque` / `itembaixaestoque` | `F` / `C` | Finalizada / Cancelada | ✅ |
@@ -146,14 +148,14 @@
 | **`entrega`** | `F`, `E` | Finalizada / Entregue (têm `datahorafinal`) | ✅ operacional |
 | **`entrega`** | `C` | Cancelada | ✅ |
 | **`entrega`** | `A`, `B`, `D`, `H` | **Em aberto / pendentes de baixa** | ✅ operacional |
-| **`entrega`** (mapeamento alternativo do DW) | `C`,`D`,`E`,`F`,`G` | Faturada / Enviada / Cancelada / Finalizada / Retornada | ❌ **conflita com o acima** |
+| **`entrega`** (mapeamento alternativo, observado numa extração) | `C`,`D`,`E`,`F`,`G` | Faturada / Enviada / Cancelada / Finalizada / Retornada | ❌ **conflita com o acima** |
 | `cadernooferta` | `A` / `I` | Ativo / Inativo | ✅ |
 | `cadernooferta.origem` | `A` / `C` / `F` | Automático-integração / Cadastro manual / Fidelidade-Scanntech | ✅ |
 | `itemcadernooferta.tipooferta` | `P`/`D`/`L`/`Q`/`B` | Preço / Desconto% / Leve-Pague / Desconto por qtd / sem preço (ignorar) | ✅ |
 | `itemcadernooferta.tipoitem` | `B` / `E` / `C` / `D` | Grupo de remarcação / Combo / Fabricante / Classificação | ✅ |
 | `itemcadernooferta.descontoporqtdtipo` | `C` / `B` / `A` / `G` | Preço total do conjunto / Preço unitário / % por unidade / % no conjunto | ✅ |
 | `itemvenda.origemdesconto` | `S`/`D`/`P`/`Q`/`M`/`B`/`E`/`R`/`C`/`L` | ver [02-vendas.md](02-vendas.md) | ✅ |
-| `itemvenda.origemdesconto` | `F` | **existe na base, NÃO decodificado** — não aparece no `CASE` do DW (cai em "Origem desconhecida") | ❌ |
+| `itemvenda.origemdesconto` | `F` | **existe na base, NÃO decodificado** — não aparece em nenhum dos mapeamentos observados (cai em "Origem desconhecida") | ❌ |
 | `itemvendadesconto.origemdesconto` | `P` / `D` | Promoção via caderno / outro | ✅ |
 | `quebracaixa` | `C` | **Estado NORMAL/processado** (~97%) — ⚠️ **não** é cancelada | ✅ |
 | `combooferta` | `I` | Inativo | ✅ |
@@ -182,7 +184,7 @@ constante do ERP.
 | | 21 / 22 / 23 | Transferência saída / Estorno / Recebimento de transferência |
 | | 26 / 27 / 30 | **Venda** / **Devolução de venda** / Estorno de venda |
 | | 31 / 32 | Baixa de estoque / Devolução de compra |
-| `tipomovimentacaoestoque.codigo` | **sem id conhecido** | `RF`, `ERF`, `RTR`, `TRF`, `ETR`, `VND`, `DVV`, `EVND`, `EEV`, `BAIXA`, `DVC`, `CES`, `CEE` — ⚠️ **a correspondência código ↔ id NÃO foi verificada**; ver [04-estoque.md](04-estoque.md) |
+| `tipomovimentacaoestoque.codigo` | **sem id conhecido** | `RF`, `ERF`, `RTR`, `TRF`, `ETR`, `VND`, `DVV`, `EVND`, `EEV`, `BAIXA`, `DVC`, `CES`, `CEE` — **códigos observados em extrações do ERP**, ⚠️ **a correspondência código ↔ id NÃO foi verificada**; ver [04-estoque.md](04-estoque.md) |
 | `unidadenegocio` (DRE) | — | há unidades **não-loja** (escritório, ambiente de nuvem, sincronização) que precisam ser **excluídas** de qualquer relatório de venda/DRE. Os ids são **específicos de cada base** — descobrir por `SELECT id, nome, status FROM unidadenegocio`, não copiar de outro cliente |
 | CFOP transferência | — | `1151,1152,2151,2152,5151,5152,6151,6152,5409,6409,5411,6411` |
 | CFOP serviço | — | `5931,5932,5933,1933,2933,6933` |

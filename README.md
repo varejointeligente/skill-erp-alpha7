@@ -23,7 +23,6 @@ references/
   09-consultas-e-performance.md joins canônicos, performance, conexão, Postgres nessa base
   10-armadilhas.md              60+ casos reais: sintoma → causa → correção → prevenção
   11-glossario.md               vocabulário do negócio ↔ tabela/coluna/valor
-  12-dw-pentaho.md              modelo dimensional e queries de um DW já construído sobre o ERP
 scripts/
   consultar_alpha7.py           consulta somente leitura no PostgreSQL
 ```
@@ -65,21 +64,28 @@ Lacunas conhecidas:
   `itemtransferencia.status`, `liberacaousuario.tipo`, `devolucaocompra.status`.
 - **`venda.status = 'G'`** — só o volume foi medido (~23 mil); o significado **não** está
   confirmado (o rótulo "Estornada" vem do `G` de `itemvenda`, outra tabela).
-- **`itemvenda.origemdesconto = 'F'`** — existe na base e não aparece no `CASE` do DW.
+- **`itemvenda.origemdesconto = 'F'`** — existe na base e não aparece em nenhum dos mapeamentos
+  observados de `origemdesconto`.
 - **`tipomovimentacaoestoque`: id ↔ `codigo` nunca foi verificado.** Os ids (com descrição) e os
   códigos (`RF`, `VND`, `EVND`…) vêm de fontes diferentes e **nenhuma faz o join**. Um
   `SELECT id, codigo, descricao FROM tipomovimentacaoestoque` fecha essa lacuna.
 - **`alteracaopreco`:** sabe-se que `precoreferencial` é gravado com o mesmo valor como anterior e
   posterior, mas os **nomes dessas duas colunas** não estão registrados — conferir no
   `information_schema` antes de qualquer `INSERT`.
-- `entrega.status` tem **dois mapeamentos conflitantes** (operacional × DW) ainda não reconciliados.
-- A tabela `historicovenda` foi descoberta mas nunca teve cobertura medida.
+- `entrega.status` tem **dois mapeamentos conflitantes** — o validado operacionalmente e outro
+  observado numa extração — ainda não reconciliados. Eles se contradizem justamente em `C` e `E`.
+- A tabela `historicovenda` (agregado de venda por loja+embalagem+data, pré-computado pelo ERP) foi
+  descoberta numa extração mas **nunca teve cobertura medida** — não usar como fonte de demanda
+  antes de comparar um mês dela contra `venda + itemvenda`.
+- **Profundidade do `planocontas.caminho`:** há registro de extrações lendo os níveis em índices de
+  `split_part` diferentes (2/3/4 × 3/4/5/6), o que sugere uma raiz a mais em alguma base. Qual é a
+  forma corrente não foi confirmado.
 
 ## Origem e privacidade
 
-Destilado de documentação de projeto real de uma rede de farmácias e das transformações Pentaho de
-um data warehouse construído sobre o mesmo ERP. **A skill é deliberadamente neutra quanto a
-cliente** — serve para qualquer rede que rode o Alpha 7.
+Destilado de documentação de projeto real de uma rede de farmácias e de extrações SQL rodadas contra
+o banco do próprio ERP. **A skill é deliberadamente neutra quanto a cliente** — serve para qualquer
+rede que rode o Alpha 7.
 
 O que **fica**: estrutura de tabela, significado de coluna, semântica de `char(1)`, fórmula,
 armadilha estrutural, comportamento do PostgreSQL nessa base, e os **casos concretos com número
@@ -87,7 +93,10 @@ medido** (volume, tempo de query, percentual) — é isso que ensina.
 
 O que **saiu**: nome da rede, nomes reais de banco de produção, cidades e nomes de loja, clientes
 nominados (PJ e PF), telefones, a carteira de convênios/canais de uma rede específica, ids de
-unidade de negócio e códigos de loja de um cliente. Onde o exemplo era necessário para a lição, ele
+unidade de negócio e códigos de loja de um cliente, e a **infraestrutura analítica de um cliente
+específico** (ferramenta, orquestração, modelagem própria) — que não faz parte do Alpha 7 e não
+existe na maioria das redes; o que essas extrações ensinaram **sobre o ERP** foi preservado nos
+arquivos de área. Onde o exemplo era necessário para a lição, ele
 foi substituído por placeholder (`redefarmacias_esc_<data>`, `CIDADE_A`, `MARKETPLACE_A`,
 `<LOJA_FORA>`, telefone fictício) **preservando o formato e os números medidos**. Nomes de pessoas
 foram substituídos por "o gestor"; não há credenciais, hosts nem IPs nos arquivos.

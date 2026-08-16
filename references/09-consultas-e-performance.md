@@ -239,8 +239,27 @@ pré-agregar a tabela relacionada **inteira** numa CTE (`GROUP BY` / `DISTINCT O
 `LEFT JOIN` — **mesmo que a CTE agregada não tenha filtro de período**. O hash join em lote vence a
 subquery correlacionada.
 
-⚠️ **Exceção:** `LATERAL` por linha é barato quando a população é pequena (ex.: backlog de ~750
+⚠️ **Exceção 1:** `LATERAL` por linha é barato quando a população é pequena (ex.: backlog de ~750
 pedidos de transferência). O aviso vale para tabelas grandes como `venda`/`itemvenda`.
+
+⚠️ **Exceção 2 — `LATERAL ... LIMIT 1` que cai num índice existente.** Para pegar a **última
+movimentação de um par (loja, embalagem) específico**, o `LATERAL` é o caminho barato, porque
+`movimentacaoestoque` tem índice em `(embalagemid, unidadenegocioid)`:
+
+```sql
+JOIN LATERAL (
+  SELECT me.datahora AS ultima_mov_ts
+  FROM movimentacaoestoque me
+  WHERE me.unidadenegocioid = e.unidadenegocioid
+    AND me.embalagemid      = e.embalagemid
+  ORDER BY me.datahora DESC
+  LIMIT 1
+) m ON TRUE
+```
+
+A diferença em relação ao caso lento é **qual coluna filtra**: aqui o filtro é pela chave indexada e
+a data só ordena o punhado de linhas do par. Varrer a mesma tabela **por data** não tem índice e cai
+no Seq Scan de 32,2 mi de linhas (ver [04-estoque.md](04-estoque.md)).
 
 ### 2. Uma query ou várias? Depende das CTEs
 

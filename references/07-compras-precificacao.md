@@ -49,6 +49,11 @@ Corrigido a partir de print da tela real do Alpha 7 (**dois mapeamentos anterior
 - Não há coluna que distinga `C` de `R` com certeza absoluta. Como sempre foram tratadas de forma
   idêntica na lógica de negócio (`datahoraentrada IS NOT NULL`), uma eventual inversão de rótulo é
   cosmética.
+- ⚠️ **Por isso mesmo, "nota entrada" NÃO é `status = 'C'`.** Filtrar só por `'C'` descarta em
+  silêncio as `'R'`, que têm a mesma semântica (já vi extração de custo de entrada fazendo isso). A
+  forma correta e à prova de inversão de rótulo é **`nf.datahoraentrada IS NOT NULL`**, que cobre as
+  duas. Como `'R'` é raro (127 notas contra 343 mil), o erro é pequeno o bastante para nunca chamar
+  atenção — e é exatamente esse o problema.
 - ⚠️ **Aba "recebidas" filtra por `datahoraentrada`, NÃO por `datahoraemissao`.** Bug real: das notas
   com entrada nos últimos 7 dias, só **~38% apareciam** (1.901 de 5.002) quando o filtro era por
   emissão — havia casos com **600+ dias** entre emissão e entrada.
@@ -98,7 +103,7 @@ eram transferência entre filiais.
 | `icmsstvalor`, `icmsstfcpvalor`, `ipivalor`, `icmsstrecolhidovalor`, `fcpstrecolhidovalor`, `icmsstretidovalor`, `icmsdesoneradovalor` | Impostos |
 | `numeropedidocompra` | ⚠️ **texto livre, NÃO confiável** — ver abaixo |
 
-**Custo total com impostos** (fórmula usada no DW):
+**Custo total com impostos** (fórmula observada em extrações de custo de entrada):
 
 ```sql
 inf.valortotal + inf.icmsstvalor + inf.icmsstfcpvalor + inf.ipivalor

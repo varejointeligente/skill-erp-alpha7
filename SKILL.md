@@ -28,7 +28,6 @@ keys declaradas, e o significado de cada `char(1)` depende da tabela — nada di
 | Performance, joins canônicos, conexão, particularidades do Postgres | `references/09-consultas-e-performance.md` |
 | "Por que esse número está errado?" | `references/10-armadilhas.md` |
 | O gestor usou um termo que você não reconhece | `references/11-glossario.md` |
-| Como esse dado já foi extraído antes (modelo dimensional / Pentaho) | `references/12-dw-pentaho.md` |
 
 Quando a tarefa cruza áreas, leia as duas — a interseção é onde moram os erros.
 
@@ -73,9 +72,11 @@ denominador. Use essas fórmulas em vez de improvisar uma: elas são o que faz o
 com o que o cliente já aceitou como verdade. Estão em `references/02-vendas.md` e
 `references/04-estoque.md`.
 
-O `references/12-dw-pentaho.md` guarda as queries reais de um data warehouse construído sobre esse
-ERP. Antes de modelar uma extração do zero, veja se ela já existe ali — e note as ressalvas de onde
-o DW diverge do que foi validado ao vivo.
+Parte do que está registrado veio de **extrações SQL já rodadas contra o banco**, não de validação
+ao vivo com o gestor — esses pontos estão marcados como "observado numa extração, não validado ao
+vivo". Trate-os como ponto de partida a conferir, não como fato: onde uma extração diverge do que
+foi validado operacionalmente (o caso mais grave é `entrega.status`), a divergência está anotada no
+próprio ponto.
 
 ## Ao validar contra o cliente
 
