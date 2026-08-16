@@ -7,30 +7,47 @@ Serve para atendimento de suporte e consultoria: quando alguém pede um relatór
 número ou pergunta "de onde sai esse campo", o Claude passa a responder a partir do que já foi
 medido contra bancos reais, em vez de deduzir pelo nome das colunas.
 
+## Instalar
+
+Este repositório é um plugin do Claude e também o seu próprio marketplace — um comando adiciona,
+outro instala.
+
+**Claude Code:**
+
+```
+/plugin marketplace add varejointeligente/skill-erp-alpha7
+/plugin install erp-alpha7@varejointeligente-alpha7
+```
+
+**Cowork (app desktop):** Customize → Plugins → Add marketplace → cole
+`varejointeligente/skill-erp-alpha7` → Browse plugins → Install.
+
+A skill passa a ser acionada sozinha quando a conversa envolve o Alpha 7; não é preciso invocá-la
+pelo nome. Atualizações chegam por `/plugin marketplace update` (ou automaticamente, se o
+auto-update estiver ligado).
+
 ## Conteúdo
 
 ```
-SKILL.md                        instruções e índice das referências
-references/
-  01-visao-geral.md             pessoa, embalagem, convenções, mapa de relacionamentos
-  02-vendas.md                  venda, itemvenda, pagamento, devolução, canal, vendedor, métricas
-  03-produto-embalagem.md       produto, apresentação/SKU, classificação, preço, custo, curva ABC
-  04-estoque.md                 estoque, movimentação, mín/máx, ruptura, perdas, transferência
-  05-pessoas-clientes.md        pessoa, cliente, prescritor, receita, farmacêutico, busca
-  06-financeiro.md              contas a pagar/receber, crediário, cartão, plano de contas, DRE
-  07-compras-precificacao.md    pedido de compra, NF, caderno de oferta, alteração de preço
-  08-logistica-entregas.md      entrega, remessa, endereço, unidades de negócio
-  09-consultas-e-performance.md joins canônicos, performance, conexão, Postgres nessa base
-  10-armadilhas.md              60+ casos reais: sintoma → causa → correção → prevenção
-  11-glossario.md               vocabulário do negócio ↔ tabela/coluna/valor
-scripts/
-  consultar_alpha7.py           consulta somente leitura no PostgreSQL
-```
-
-## Instalar
-
-```bash
-zip -r erp-alpha7.skill . -x '.git/*'
+.claude-plugin/
+  plugin.json                     metadados do plugin
+  marketplace.json                torna o próprio repositório instalável
+skills/erp-alpha7/
+  SKILL.md                        instruções e índice das referências
+  references/
+    01-visao-geral.md             pessoa, embalagem, convenções, mapa de relacionamentos
+    02-vendas.md                  venda, itemvenda, pagamento, devolução, canal, vendedor, métricas
+    03-produto-embalagem.md       produto, apresentação/SKU, classificação, preço, custo, curva ABC
+    04-estoque.md                 estoque, movimentação, mín/máx, ruptura, perdas, transferência
+    05-pessoas-clientes.md        pessoa, cliente, prescritor, receita, farmacêutico, busca
+    06-financeiro.md              contas a pagar/receber, crediário, cartão, plano de contas, DRE
+    07-compras-precificacao.md    pedido de compra, NF, caderno de oferta, alteração de preço
+    08-logistica-entregas.md      entrega, remessa, endereço, unidades de negócio
+    09-consultas-e-performance.md joins canônicos, performance, conexão, Postgres nessa base
+    10-armadilhas.md              60+ casos reais: sintoma → causa → correção → prevenção
+    11-glossario.md               vocabulário do negócio ↔ tabela/coluna/valor
+  scripts/
+    consultar_alpha7.py           consulta somente leitura no PostgreSQL
 ```
 
 ## Consultar o banco
@@ -38,10 +55,10 @@ zip -r erp-alpha7.skill . -x '.git/*'
 ```bash
 pip install psycopg2-binary
 export A7_HOST=... A7_PORT=5432 A7_USER=usuario_leitura A7_PASSWORD=...
-python scripts/consultar_alpha7.py --bases                    # achar a base `_esc_` corrente
+python skills/erp-alpha7/scripts/consultar_alpha7.py --bases                    # achar a base `_esc_` corrente
 export A7_DATABASE=cliente_esc_20260101
-python scripts/consultar_alpha7.py "SELECT * FROM unidadenegocio ORDER BY 1"
-python scripts/consultar_alpha7.py --tabelas itemvenda
+python skills/erp-alpha7/scripts/consultar_alpha7.py "SELECT * FROM unidadenegocio ORDER BY 1"
+python skills/erp-alpha7/scripts/consultar_alpha7.py --tabelas itemvenda
 ```
 
 O script abre a sessão em modo *read-only*, fixa o fuso em `America/Sao_Paulo` e recusa qualquer
@@ -104,3 +121,7 @@ foram substituídos por "o gestor"; não há credenciais, hosts nem IPs nos arqu
 ⚠️ Ao usar a skill num cliente novo, tudo que estiver marcado como cadastro do cliente (códigos de
 unidade, categorias de `classificacao`, formas de pagamento, cadernos de oferta, convenção de preço
 quebrado) **precisa ser levantado por query naquela base** — não é conhecimento do ERP.
+
+## Licença
+
+MIT — ver [LICENSE](LICENSE).

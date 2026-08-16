@@ -1,0 +1,13 @@
+{
+  "name": "erp-alpha7",
+  "description": "Base de conhecimento do ERP Alpha 7 para varejo farmaceutico: schema PostgreSQL, consultas validadas, metricas canonicas e catalogo de armadilhas.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Varejo Inteligente",
+    "url": "https://github.com/varejointeligente"
+  },
+  "homepage": "https://github.com/varejointeligente/skill-erp-alpha7",
+  "repository": "https://github.com/varejointeligente/skill-erp-alpha7",
+  "license": "MIT",
+  "keywords": ["erp", "farmacia", "varejo", "sql", "claude-skill"]
+}
