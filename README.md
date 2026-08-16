@@ -59,13 +59,39 @@ Quando aparecer uma armadilha nova, registre em `references/10-armadilhas.md` no
 com o caso concreto e o número medido. Vários pontos estão marcados como incertos — trate a marca
 como pedido de conferência contra a tela do ERP, e atualize a referência quando confirmar.
 
-Lacunas conhecidas: `pedidocompra.status` (7 de 8 valores), `itemtransferencia.status`,
-`liberacaousuario.tipo`, `devolucaocompra.status`; `entrega.status` tem **dois mapeamentos
-conflitantes** (operacional × DW) ainda não reconciliados; a tabela `historicovenda` foi
-descoberta mas nunca teve cobertura medida.
+Lacunas conhecidas:
+
+- **Status não decodificados:** `pedidocompra.status` (7 de 8 valores), `pedidocompra.origem`,
+  `itemtransferencia.status`, `liberacaousuario.tipo`, `devolucaocompra.status`.
+- **`venda.status = 'G'`** — só o volume foi medido (~23 mil); o significado **não** está
+  confirmado (o rótulo "Estornada" vem do `G` de `itemvenda`, outra tabela).
+- **`itemvenda.origemdesconto = 'F'`** — existe na base e não aparece no `CASE` do DW.
+- **`tipomovimentacaoestoque`: id ↔ `codigo` nunca foi verificado.** Os ids (com descrição) e os
+  códigos (`RF`, `VND`, `EVND`…) vêm de fontes diferentes e **nenhuma faz o join**. Um
+  `SELECT id, codigo, descricao FROM tipomovimentacaoestoque` fecha essa lacuna.
+- **`alteracaopreco`:** sabe-se que `precoreferencial` é gravado com o mesmo valor como anterior e
+  posterior, mas os **nomes dessas duas colunas** não estão registrados — conferir no
+  `information_schema` antes de qualquer `INSERT`.
+- `entrega.status` tem **dois mapeamentos conflitantes** (operacional × DW) ainda não reconciliados.
+- A tabela `historicovenda` foi descoberta mas nunca teve cobertura medida.
 
 ## Origem e privacidade
 
 Destilado de documentação de projeto real de uma rede de farmácias e das transformações Pentaho de
-um data warehouse construído sobre o mesmo ERP. Nomes de pessoas foram substituídos por "o gestor";
-não há credenciais, hosts nem IPs nos arquivos.
+um data warehouse construído sobre o mesmo ERP. **A skill é deliberadamente neutra quanto a
+cliente** — serve para qualquer rede que rode o Alpha 7.
+
+O que **fica**: estrutura de tabela, significado de coluna, semântica de `char(1)`, fórmula,
+armadilha estrutural, comportamento do PostgreSQL nessa base, e os **casos concretos com número
+medido** (volume, tempo de query, percentual) — é isso que ensina.
+
+O que **saiu**: nome da rede, nomes reais de banco de produção, cidades e nomes de loja, clientes
+nominados (PJ e PF), telefones, a carteira de convênios/canais de uma rede específica, ids de
+unidade de negócio e códigos de loja de um cliente. Onde o exemplo era necessário para a lição, ele
+foi substituído por placeholder (`redefarmacias_esc_<data>`, `CIDADE_A`, `MARKETPLACE_A`,
+`<LOJA_FORA>`, telefone fictício) **preservando o formato e os números medidos**. Nomes de pessoas
+foram substituídos por "o gestor"; não há credenciais, hosts nem IPs nos arquivos.
+
+⚠️ Ao usar a skill num cliente novo, tudo que estiver marcado como cadastro do cliente (códigos de
+unidade, categorias de `classificacao`, formas de pagamento, cadernos de oferta, convenção de preço
+quebrado) **precisa ser levantado por query naquela base** — não é conhecimento do ERP.

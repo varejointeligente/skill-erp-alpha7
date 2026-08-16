@@ -97,7 +97,7 @@
 | **Entregador / motoboy** | `entregador`, `entregadorunidadenegocio` |
 | **Região de entrega** | `regiaoentrega`, `regiaoentregabairro`, `regiaoentregafaixacep` |
 | **Televendas** | venda com `entrega` não cancelada, agregada por **cidade** |
-| **Canal digital** | identificado pela forma de pagamento (iFood, E-Delivery, Iqnus, Tray, Farmácias App) |
+| **Canal digital** | identificado pela **forma de pagamento** — quais plataformas existem varia por cliente, levantar em `formapagamento` |
 | **Receita médica** | `receitamedica` (via `orcamento`, não via venda) |
 | **Prescritor / médico** | `prescritor` |
 | **Farmacêutico** | `farmaceutico` (⚠️ `usuario.plugpharmacargo` **não** distingue) |
@@ -114,8 +114,8 @@
 | `venda` | `F` | Finalizada (~9,15 mi) | ✅ |
 | `venda` | `C` | Cancelada (~221 mil) | ✅ |
 | `venda` | `D` | **Devolvida por inteiro** (~10 mil) | ✅ |
-| `venda` | `G` | Estornada (~23 mil) | ✅ |
-| `itemvenda` | `F` / `C` / `D` / `G` | Fechado / Cancelado / Devolvido / Estornado | ✅ |
+| `venda` | `G` | **NÃO CONFIRMADO** — só o volume foi medido (~23 mil). "Estornada" é empréstimo do `G` de `itemvenda` (**outra tabela**) | ⚠️ |
+| `itemvenda` | `F` / `C` / `D` / `G` | Fechado / Cancelado / Devolvido / Estornado (rótulos do `CASE` do DW) | ✅ |
 | `produto` | `A` / `I` | Ativo / Inativo | ✅ |
 | `produto.tipo` | `M` / `S` / `T` | Mercadoria / Serviço / Serviço tomado (outro = ajuste fiscal) | ✅ |
 | `unidadenegocio` | `A` / `I` | Ativa / Inativa | ✅ |
@@ -153,6 +153,7 @@
 | `itemcadernooferta.tipoitem` | `B` / `E` / `C` / `D` | Grupo de remarcação / Combo / Fabricante / Classificação | ✅ |
 | `itemcadernooferta.descontoporqtdtipo` | `C` / `B` / `A` / `G` | Preço total do conjunto / Preço unitário / % por unidade / % no conjunto | ✅ |
 | `itemvenda.origemdesconto` | `S`/`D`/`P`/`Q`/`M`/`B`/`E`/`R`/`C`/`L` | ver [02-vendas.md](02-vendas.md) | ✅ |
+| `itemvenda.origemdesconto` | `F` | **existe na base, NÃO decodificado** — não aparece no `CASE` do DW (cai em "Origem desconhecida") | ❌ |
 | `itemvendadesconto.origemdesconto` | `P` / `D` | Promoção via caderno / outro | ✅ |
 | `quebracaixa` | `C` | **Estado NORMAL/processado** (~97%) — ⚠️ **não** é cancelada | ✅ |
 | `combooferta` | `I` | Inativo | ✅ |
@@ -167,19 +168,22 @@
 
 ## Códigos e ids fixos observados
 
-⚠️ **Só os `tipomovimentacaoestoque` e os `curvaabc` se mostraram estáveis entre bancos.**
-Tudo o mais (unidade, forma de pagamento) **varia** — derivar por query.
+⚠️ Ids de **unidade de negócio** e de **forma de pagamento** comprovadamente **variam de banco para
+banco** — sempre derivar por query, nunca hardcodar. Os ids de `curvaabc` e de
+`tipomovimentacaoestoque` abaixo foram observados **em bases reais**, mas **não há medição que
+comprove estabilidade entre bancos diferentes** — trate como ponto de partida a conferir, não como
+constante do ERP.
 
 | Domínio | Id | Valor |
 | --- | --- | --- |
-| `curvaabc` | 340 / 341 / 342 / **343** | A / B / C / **D** |
+| `curvaabc` | 340 / 341 / 342 / **343** | A / B / C / **D** (⚠️ conferir na base corrente) |
 | `tipomovimentacaoestoque` | 17 / 18 | Recebimento Físico / Estorno de Recebimento |
 | | 19 / 20 | Inventário Entrada / Saída |
 | | 21 / 22 / 23 | Transferência saída / Estorno / Recebimento de transferência |
 | | 26 / 27 / 30 | **Venda** / **Devolução de venda** / Estorno de venda |
 | | 31 / 32 | Baixa de estoque / Devolução de compra |
-| `tipomovimentacaoestoque.codigo` | — | `RF`, `ERF`, `RTR`, `TRF`, `ETR`, `VND`, `DVV`, `EVND`, `EEV`, `BAIXA`, `DVC`, `CES`, `CEE` |
-| `unidadenegocio` (DRE) | −125 / 1 / 4473914 | CLOUD / ESC (Escritório) / SINC — **excluir** |
+| `tipomovimentacaoestoque.codigo` | **sem id conhecido** | `RF`, `ERF`, `RTR`, `TRF`, `ETR`, `VND`, `DVV`, `EVND`, `EEV`, `BAIXA`, `DVC`, `CES`, `CEE` — ⚠️ **a correspondência código ↔ id NÃO foi verificada**; ver [04-estoque.md](04-estoque.md) |
+| `unidadenegocio` (DRE) | — | há unidades **não-loja** (escritório, ambiente de nuvem, sincronização) que precisam ser **excluídas** de qualquer relatório de venda/DRE. Os ids são **específicos de cada base** — descobrir por `SELECT id, nome, status FROM unidadenegocio`, não copiar de outro cliente |
 | CFOP transferência | — | `1151,1152,2151,2152,5151,5152,6151,6152,5409,6409,5411,6411` |
 | CFOP serviço | — | `5931,5932,5933,1933,2933,6933` |
 | CFOP compra | — | o resto (`5102`, `5403`, `6102`, `5405`…) |

@@ -72,22 +72,42 @@ estoque_prod_loja AS (
 
 ### Tipos de movimentação (`tipomovimentacaoestoque`)
 
-| id | Descrição | Código observado no DW |
-| --- | --- | --- |
-| 17 | Recebimento Físico (compra) | `RF` |
-| 18 | Estorno de Recebimento Físico | `ERF` |
-| 19 | Inventário Entrada | — |
-| 20 | Inventário Saída | — |
-| 21 | Transferência (saída) | `TRF` |
-| 22 | Estorno de Transferência | `ETR` |
-| 23 | Recebimento de Transferência (entrada) | `RTR` |
-| 26 | Venda | `VND` |
-| 27 | **Devolução de Venda** | `DVV` |
-| 30 | Estorno de Venda | `EVND` / `EEV` |
-| 31 | Baixa de Estoque | `BAIXA` |
-| 32 | Devolução de Compra | `DVC` |
+⚠️ **São duas listas independentes, e a correspondência entre elas NÃO foi verificada.** Os **ids**
+com descrição vieram de inspeção do ERP; os **códigos** (`tipomovimentacaoestoque.codigo`) vieram
+das queries do DW, que nunca trazem o `id` junto. Ninguém fez o `SELECT id, codigo, descricao FROM
+tipomovimentacaoestoque` que ligaria as duas — **confirmar no banco antes de usar código e id como
+sinônimos.**
 
-Outros códigos vistos no DW: `CES` (correção de estoque saída) e `CEE` (correção de estoque entrada).
+**Lista 1 — ids e descrição (observados no ERP):**
+
+| id | Descrição |
+| --- | --- |
+| 17 | Recebimento Físico (compra) |
+| 18 | Estorno de Recebimento Físico |
+| 19 | Inventário Entrada |
+| 20 | Inventário Saída |
+| 21 | Transferência (saída) |
+| 22 | Estorno de Transferência |
+| 23 | Recebimento de Transferência (entrada) |
+| 26 | Venda |
+| 27 | **Devolução de Venda** |
+| 30 | Estorno de Venda |
+| 31 | Baixa de Estoque |
+| 32 | Devolução de Compra |
+
+**Lista 2 — códigos usados no DW (`tipomovimentacaoestoque.codigo`), sem id associado:**
+
+`RF`, `ERF`, `RTR`, `TRF`, `ETR`, `VND`, `DVV`, `EVND`, `EEV`, `BAIXA`, `DVC`, `CES`, `CEE`.
+
+No DW esses códigos aparecem apenas agrupados por **efeito no saldo** (ver
+[12-dw-pentaho.md](12-dw-pentaho.md)): `('RF','RTR','ETR','DVV','EVND','EEV')` de um lado,
+`('ERF','TRF','VND','BAIXA','DVC')` do outro, com `CES`/`CEE` isolados. Os nomes sugerem a leitura
+óbvia (`RF`=recebimento físico, `VND`=venda, `DVV`=devolução de venda, `CES`/`CEE` = correção de
+estoque saída/entrada), mas isso é **inferência pelo nome, não medição** — e há mais códigos (13)
+do que ids listados (12), então o mapeamento não é sequer 1:1.
+
+📌 **Lacuna:** rodar `SELECT id, codigo, descricao FROM tipomovimentacaoestoque ORDER BY id` e
+substituir estas duas listas por uma só.
 
 ### ⚠️⚠️ 32,2 MILHÕES de linhas e SEM índice em `datahora`
 
@@ -100,10 +120,16 @@ Medição real de três alternativas para calcular CMV histórico:
 | --- | --- |
 | `movimentacaoestoque` direto (tipos 26/30/27) | **54 s** ← escolhida |
 | `itemvenda` + `custoproduto` | 80 s |
-| `itemvenda → movimentacaoestoque` pelo id (tentando usar o índice) | **118 s — a pior** |
+| `itemvenda → movimentacaoestoque` por `itemvenda.movimentacaoestoqueid` (tentando usar o índice `id+custo+customedio`) | **118 s — a pior** |
 
 Filtrar um mês só **não ajuda** — o Seq Scan varre tudo de qualquer jeito.
 Como o ERP é somente leitura, não dá para criar índice.
+
+⚠️ **A terceira linha é contraintuitiva e vale destacar:** "join por PK" parece o caminho barato, e é
+o que o DW em Pentaho faz (`fato_venda`, ver [12-dw-pentaho.md](12-dw-pentaho.md)) — mas contra 32,2
+mi de linhas ficou **mais que o dobro** do Seq Scan direto. Se encontrar texto (aqui ou em outro
+lugar) chamando esse JOIN de "a forma barata de obter custo histórico", é a intuição falando, não a
+medição.
 
 → **Consequência de arquitetura:** métrica que depende de `movimentacaoestoque` por período precisa
 de **snapshot/cache diário**, não pode ser calculada a cada request.

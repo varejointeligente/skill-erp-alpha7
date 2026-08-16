@@ -22,7 +22,7 @@
 | `unidadenegocioid` | bigint FK | → `unidadenegocio` (qual loja) |
 | `usuarioid` | bigint FK | → `usuario` — **operador do CAIXA/PDV, não o vendedor** |
 | `pessoaid` | bigint FK | → `pessoa` (cliente; pode ser NULL = não identificado) |
-| `status` | char(1) | `'F'` = Finalizada, `'C'` = Cancelada, `'D'` = Devolvida por inteiro, `'G'` = estornada |
+| `status` | char(1) | `'F'` = Finalizada, `'C'` = Cancelada, `'D'` = Devolvida por inteiro, **`'G'` = ⚠️ NÃO CONFIRMADO** (ver abaixo) |
 | `datahoraabertura` | timestamp | Início da venda |
 | `datahorafechamento` | timestamp | Conclusão — **é a coluna de filtro de período** |
 | `valortotal` | numeric | Valor total da venda |
@@ -34,6 +34,12 @@
 | `coo` | varchar | Número do cupom fiscal |
 
 **Distribuição de status observada** numa base: `F` ~9,15 mi · `C` ~221 mil · `G` ~23 mil · `D` ~10 mil.
+(A soma, ~9,4 mi, é de onde vem o volume "medido" de `venda` citado na visão geral — é **derivado**.)
+
+⚠️ **`venda.status = 'G'` NÃO está decodificado.** Só o volume foi medido (~23 mil). O rótulo
+"Estornada" que circula vem do `CASE` do DW sobre **`itemvenda.status`** — **outra tabela**, e
+[11-glossario.md](11-glossario.md) avisa que o mesmo caractere significa coisas diferentes em
+tabelas diferentes. 📌 **Lacuna:** confirmar na tela do ERP antes de tratar `G` como estorno.
 
 **Regra:** venda válida = `v.status = 'F'`. Não existe coluna `apagado`/`cancelado` separada.
 
@@ -46,7 +52,7 @@
 | `embalagemid` | bigint FK | → `embalagem.id` (**nunca `produto`**) |
 | `unidadenegocioid` | bigint FK | → `unidadenegocio` |
 | `itemorcamentoid` | bigint FK | → `itemorcamento` (nullable) |
-| `status` | char(1) | `'F'` Finalizado, `'C'` Cancelado, `'D'` Devolvido, `'G'` Estornado |
+| `status` | char(1) | `'F'` **Fechado**, `'C'` Cancelado, `'D'` Devolvido, `'G'` Estornado (rótulos do `CASE` do `.ktr` do DW — note que aqui é "Fechado", não "Finalizado" como em `venda`) |
 | `quantidade` | numeric | |
 | `valorunitario` | numeric | ⚠️ **preço de TABELA, não o negociado** (ver abaixo) |
 | `valortotal` | numeric | Total da linha, já com desconto |
@@ -59,9 +65,10 @@
 | `pbmid` | bigint FK | → `pbm` (benefício farmacêutico, nullable) |
 | `liberacaousuariodescontopdvid` | bigint FK | ⚠️ **100% vazio em toda a base** (26,2 mi de linhas) — não usar |
 
-### `itemvenda.origemdesconto` — decodificação completa
+### `itemvenda.origemdesconto` — decodificação (10 de 11 valores)
 
-Decodificada por correlação e confirmada pelo mapeamento usado no DW:
+Decodificada por correlação e confirmada pelo mapeamento usado no DW. **Não é a lista completa dos
+valores que existem na base** — ver `F` logo abaixo da tabela:
 
 | Valor | Significado |
 | --- | --- |
@@ -75,6 +82,10 @@ Decodificada por correlação e confirmada pelo mapeamento usado no DW:
 | `R` | Caderno de oferta — Markup sobre preço referencial |
 | `C` | Caderno de oferta — Markup sobre custo |
 | `L` | Caderno de oferta — Leve/Pague |
+| **`F`** | ⚠️ **NÃO DECODIFICADO** — existe na base (volume baixo) e **não aparece no `CASE` do DW**, que o joga em "Origem desconhecida". 📌 Lacuna |
+
+⚠️ Os códigos `D`, `C`, `L` e `F` são de **natureza não 100% confirmada** (baixo volume); os
+significados de `D`/`C`/`L` na tabela acima vêm do `CASE` do DW, não de correlação medida.
 
 Volumes reais (90 dias, **dentro de orçamentos já negociados**): `M`=17.345 · `P`=6.352 ·
 `D`=4.304 · `B`=1.682 · `S`=1.205 · `Q`=282 · `L`=58 · `C`=13.
@@ -147,15 +158,18 @@ Sub-detalhes por modalidade: `pagamentovendacartao`, `pagamentovendacheque`,
 ⚠️⚠️ **`formapagamento.id` é DINÂMICO por banco.** Nunca hardcodar — sempre
 `JOIN formapagamento` e casar por `nome`.
 
-IDs observados em **duas bases diferentes** (prova de que variam):
+IDs observados em **duas bases diferentes** (prova de que variam) — os nomes das plataformas
+digitais foram substituídos por rótulos genéricos; o que importa é a **estrutura**: as formas
+"clássicas" ficam numa faixa baixa de 2 dígitos e as digitais em ids enormes, diferentes em cada
+base:
 
-| Base A | Base B (Primavera do Leste) |
+| Base A | Base B |
 | --- | --- |
 | 60 Dinheiro · 61 Cartão · 62 Cheque · 63 Crediário · 64 PBM · 65 Vale-Compra | 60 Dinheiro · 61 Cartao · 63 Crediario · 64 PBM · 65 Vale-Compra |
 | 4557373 PIX | 50140839229 PIX - MÁQUINA · 50140839226 PIX - CHAVE |
-| 250002639592 E-COMMERCE | 200036159276 E-DELIVERY · 50068658807 TRAY |
-| 250018615880 IFOOD | 800026124703 IFOOD · 1200008396523 IQNUS |
-| — | 9254533 BR card · 6172141 Fidelidade · 1600005257317 Farmacias App |
+| 250002639592 E-COMMERCE | 200036159276 E-COMMERCE PRÓPRIO · 50068658807 PLATAFORMA_1 |
+| 250018615880 MARKETPLACE_A | 800026124703 MARKETPLACE_A · 1200008396523 PLATAFORMA_2 |
+| — | 9254533 Cartão de rede · 6172141 Fidelidade · 1600005257317 APP_FARMACIA |
 
 ### ⚠️ `pagamentovenda.valor` inclui o TROCO (só no Dinheiro)
 
@@ -231,11 +245,12 @@ Peso real: devolução = **0,66% da receita** de clientes identificados em 12 me
 ## Canais digitais, televendas e entrega
 
 - **Canal digital** é identificado pela **forma de pagamento** (`pagamentovenda → formapagamento`),
-  não por um campo de canal. Os canais validados nesta rede: **iFood, E-Delivery, Iqnus, Tray,
-  Farmácias App** (5 canais). Há ainda formas genéricas (`commerce`/`digital`/`online`) que não
-  viram canal próprio.
+  não por um campo de canal. ⚠️ **Quais canais existem é contrato de cada rede** — levantar por
+  `SELECT id::text, nome FROM formapagamento` na base em uso. Numa rede foram 5 (marketplaces de
+  delivery e plataformas de e-commerce farmacêutico). Há ainda formas genéricas
+  (`commerce`/`digital`/`online`) que não viram canal próprio.
 - ⚠️ **Uma mesma venda pode ter 2+ formas digitais** — existem itens com
-  `canais = [E-Delivery, iFood, Iqnus]` na mesma venda. Somar produto sobre uma CTE
+  `canais = [E-COMMERCE PRÓPRIO, MARKETPLACE_A, PLATAFORMA_2]` na mesma venda. Somar produto sobre uma CTE
   "uma linha por venda+canal" **duplica o item**. Medido: soma dos 5 canais R$ 36.648,62 ×
   total sem duplicar R$ 34.434,41 → **6,4% de inflação pura**.
   → Para o total "todos os canais", usar uma CTE que agrupa **por venda** e devolve

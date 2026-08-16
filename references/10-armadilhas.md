@@ -236,7 +236,8 @@
 
 ### C8. Pessoa jurídica dominando ranking de cliente
 
-- **Sintoma:** o "top 10 clientes" é PAX NACIONAL, UNIMED, PREFEITURA, ESTADO, IFOOD.
+- **Sintoma:** o "top 10 clientes" é plano funerário, operadora de saúde, prefeitura, órgão público
+  estadual e o marketplace de delivery — nenhum consumidor de verdade.
 - **Causa:** 632 PJ respondem por só **1,12% da receita** mas dominam qualquer Top N por valor.
 - **Correção:** `COALESCE(pe.tipo,'F') <> 'J'` em relatório de CRM/consumidor.
 - **Limitação sem solução por query:** convênio cadastrado como **pessoa física com CPF** continua
@@ -303,7 +304,13 @@
 - **Sintoma:** CMV real custa ~54 s, sempre.
 - **Causa:** 32,2 mi de linhas **sem índice em `datahora`**; filtrar um mês não ajuda.
 - **Correção:** aceitar e usar **snapshot diário**; nunca calcular a cada request. As 3 alternativas
-  foram medidas antes de escolher (54 s × 80 s × 118 s).
+  foram medidas antes de escolher: `movimentacaoestoque` direto **54 s** (escolhida) ·
+  `itemvenda + custoproduto` **80 s** · `itemvenda → movimentacaoestoque` pelo id
+  (`itemvenda.movimentacaoestoqueid`, tentando usar o índice `id+custo+customedio`)
+  **118 s — a PIOR**.
+- ⚠️ **O JOIN por `itemvenda.movimentacaoestoqueid` parece "barato" e não é.** É o caminho que o DW
+  em Pentaho usa (ver [12-dw-pentaho.md](12-dw-pentaho.md)), o que reforça a intuição errada — mas o
+  join por id contra 32 mi de linhas não compensa. Medição manda, não intuição.
 
 ### D8. Filtrar `itemvenda` direto por `cadernoofertaid`
 
@@ -372,11 +379,13 @@ SELECT (v.qtd/90.0*30*...)::text AS venda_perdida ... ORDER BY venda_perdida DES
   - `ALUGUEL` arrastou **"ALUGUEL DE CARRO"** (R$ 44 mil) para o grupo errado
   - `FRETE` arrastou **"FRETE ADMINISTRATIVO"**
   - `CARTORIO` arrastou **"CUSTAS DE CARTÓRIO"** (R$ 9,1 mil)
-  - `%BELA%` pegaria **"FAZENDA ISABELA-91"** (cliente real, R$ 10 mil)
-  - `%FORMULA%` pegaria **"MED FORMULA LTDA ME"** (R$ 3,3 mil)
+  - um fragmento de 4 letras tirado do nome de uma **empresa irmã** pegou junto um **cliente comum
+    sem relação nenhuma** (R$ 10 mil a receber) que só tinha aquelas letras no meio do nome
+  - um fragmento genérico do ramo (tipo `%FORMULA%`) pegou um fornecedor homônimo (R$ 3,3 mil)
   - `"ST"` (imposto) pegaria qualquer palavra com "st"
 - **Correção:** usar o nome **MAIS ESPECÍFICO** que ainda casa; casar por **fronteira de palavra**,
-  não substring solta; usar prefixo específico (`ULTRA POPULAR FUNCIONARIO%`) em vez de `%TERMO%`.
+  não substring solta; usar prefixo específico e ancorado (`<NOME DA REDE> FUNCIONARIO%`) em vez de
+  `%TERMO%`.
 
 ### E6. Ordem das regras de classificação decide o resultado
 
@@ -455,16 +464,17 @@ SELECT (v.qtd/90.0*30*...)::text AS venda_perdida ... ORDER BY venda_perdida DES
 ### G1. ⚠️ `cidade.nome` corrompido — perde ~60% das entregas
 
 - **Sintoma:** filtro por cidade devolve muito menos do que deveria.
-- **Causa:** a MESMA cidade aparece como `PRIMAVERA DO LESTE`, `PRIMAVERA DO LEESTEE`,
-  `PRIMAVERA  DO LESTE` (2 espaços), `PRIMAVERA DO LESTEE`; `BARRA DO GARÇAS` vira
-  `BARRA DO GARÇASS` e `BARRA DO GARÇAS MT`; `campo verde mt` em minúsculas.
-- **Correção:** casar por um **TRECHO ESTÁVEL** (`PRIMAVERA`, `GARCA`, `POXOR`, `CAMPO VERDE`) e
-  devolver o nome canônico.
+- **Causa:** a MESMA cidade aparece em várias grafias (cidades genericizadas, defeitos reais):
+  `CIDADE_A`, `CIIDADE_AA` (letra duplicada), `CIDADE  A` (2 espaços), `CIDADE_AA`;
+  `CIDADE_ÇAS` vira `CIDADE_ÇASS` e `CIDADE_ÇAS <UF>` (sigla da UF colada);
+  `cidade_b mt` em minúsculas.
+- **Correção:** casar por um **TRECHO ESTÁVEL** — o prefixo sem acento que sobrevive a todas as
+  variantes — e devolver o nome canônico.
 
 ### G2. `unidadenegocio.cidade` duplicando linhas no agrupamento
 
-- **Sintoma:** a mesma cidade vira 2 linhas — R$ 901,83 em "Primavera do Leste" separado de
-  R$ 53.171,34 em "PRIMAVERA DO LESTE".
+- **Sintoma:** a mesma cidade vira 2 linhas — R$ 901,83 na grafia mista ("Cidade_a") separado de
+  R$ 53.171,34 na grafia maiúscula ("CIDADE_A").
 - **Correção:** `UPPER(TRIM(cidade))` no `GROUP BY` **e** no `SELECT`.
 - **Como evitar:** ⚠️ **regra geral** — sempre que agrupar por campo de texto livre do ERP (não um
   código/enum), rodar uma checagem de duplicata por caixa/espaço **antes** de confiar no
@@ -473,8 +483,8 @@ SELECT (v.qtd/90.0*30*...)::text AS venda_perdida ... ORDER BY venda_perdida DES
 ### G3. Telefone repetido 5–6× na mesma pessoa
 
 - **Sintoma:** um diálogo de contato lista 10–20 telefones quase idênticos e fica inútil.
-- **Causa:** o mesmo número gravado com máscaras diferentes
-  (`66996147972`, `6696147972`, `669614-7972`, `6699614 7972`…).
+- **Causa:** o mesmo número gravado com máscaras diferentes (número fictício, variações reais:
+  `65900010002`, `6590010002`, `659001-0002`, `6590001 0002`…).
 - **Correção:** dedup por **DDD + os 8 últimos dígitos** (funde variação de máscara e a
   presença/ausência do 9º dígito). Validado em 2 amostras de 40 mil contatos: **0 fusões indevidas**.
 - ⚠️ Não filtrar por `principal` — **53% das pessoas têm mais de 1 contato** e algumas não têm nenhum
@@ -539,7 +549,7 @@ SELECT (v.qtd/90.0*30*...)::text AS venda_perdida ... ORDER BY venda_perdida DES
 
 - **Sintoma:** soma dos 5 canais R$ 36.648,62 × total real R$ 34.434,41 (**6,4% de inflação**).
 - **Causa:** uma venda pode ter 2+ formas digitais (existem itens com
-  `canais = [E-Delivery, iFood, Iqnus]` na mesma venda); somar produto sobre "uma linha por
+  `canais = [E-COMMERCE PRÓPRIO, MARKETPLACE_A, PLATAFORMA_2]` na mesma venda); somar produto sobre "uma linha por
   venda+canal" conta o item 2×.
 - **Correção:** CTE que agrupa **por venda** e devolve `array_agg(canal)`; manter o `unnest` dos
   canais **isolado numa CTE de rótulo**, nunca junto do `SUM`.
@@ -605,7 +615,7 @@ SELECT (v.qtd/90.0*30*...)::text AS venda_perdida ... ORDER BY venda_perdida DES
 ### I2. Caderno "CONVENIO FUNCIONARIOS" usado para identificar funcionários
 
 - **Sintoma:** exclusão tiraria R$ 1.309.748,48 (64,8%) e 220 de 356 clientes.
-- **Causa:** **733 pessoas distintas** compram por ele em 12 meses, incluindo PREFEITURA, HOSPITAL,
+- **Causa:** **733 pessoas distintas** compram por ele em 12 meses, incluindo prefeitura, hospital,
   empresas de dedetização, fazendas e escritórios de advocacia — é um caderno de **convênio em
   geral**. E a conta agregadora de funcionários tem **ZERO** vendas por esse caderno.
 - **Correção:** excluir pelas contas nomeadas (prefixo específico), não pelo caderno.

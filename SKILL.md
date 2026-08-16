@@ -55,6 +55,16 @@ Quando a tarefa cruza áreas, leia as duas — a interseção é onde moram os e
 5. **O fuso da sessão é `America/Sao_Paulo`, mesmo quando a loja não está nele.** `CURRENT_DATE` e
    `NOW()::date` mentem para operações em UTC-4. Sempre explicite o fuso ao cortar período.
 
+## Conhecimento do ERP × cadastro do cliente
+
+Estas referências valem para **qualquer rede que rode o Alpha 7**. Estrutura de tabela, significado
+de coluna, semântica de `char(1)`, fórmula e armadilha estrutural são do ERP e podem ser aplicadas
+direto. Já **códigos e ids de unidade de negócio, formas de pagamento, nomes de caderno de oferta,
+categorias de `classificacao` e convenções comerciais** (terminação de preço, margem objetiva,
+quais lojas excluir) são **cadastro de cada cliente** — os exemplos aqui usam placeholders e o valor
+real precisa ser levantado por query na base em uso. Nunca copiar um id ou um código de loja de um
+cliente para outro.
+
 ## Antes de dar um número como certo
 
 Existem métricas já validadas com gestores de rede — receita bruta e líquida, CMV, margem, cupons,

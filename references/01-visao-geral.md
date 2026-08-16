@@ -29,8 +29,10 @@ Características que moldam qualquer consulta:
 - É um schema **grande e antigo**, com nomes de tabela/coluna **tudo em minúsculo e sem separador**
   (`unidadenegocio`, `movimentacaoestoque`, `estoqueminimoprodutounidadenegocio`).
 - Volumes reais medidos numa rede de ~14–20 lojas: `pessoa` ~5,4 milhões de linhas,
-  `movimentacaoestoque` ~32,2 milhões, `itemvenda` ~26,2 milhões, `venda` ~9,4 milhões,
-  `orcamento` ~3,9 milhões, `itempedidocompra` ~3,3 milhões.
+  `movimentacaoestoque` ~32,2 milhões, `itemvenda` ~26,2 milhões, `orcamento` ~3,9 milhões,
+  `itempedidocompra` ~3,3 milhões. O volume de `venda` (~9,4 milhões) é **derivado**, não medido
+  diretamente: é a soma da distribuição de `venda.status` (`F` ~9,15 mi + `C` ~221 mil + `G` ~23 mil
+  + `D` ~10 mil) — ver [02-vendas.md](02-vendas.md).
 - **Praticamente não há FK nem CHECK constraint declarados** no banco (validado ao inspecionar
   `alteracaopreco` e `embalagem`): o Alpha 7 confia na aplicação cliente para manter consistência.
   Quem escreve nele precisa replicar as invariantes à mão.
@@ -41,16 +43,21 @@ Características que moldam qualquer consulta:
 
 - **PostgreSQL.** Todo o SQL deste conjunto de referências é Postgres (`ILIKE`, `::tipo`,
   `split_part`, `FILTER`, CTEs, `generate_series`, `DISTINCT ON`).
-- **Nome da base segue o padrão `<cliente>_esc_<data>`** — exemplos reais observados:
-  - `ultrapopularprimaveradoleste_esc_20250715`
-  - `primaveradoleste_loja01_20250819` (variante `<cliente>_loja<NN>_<data>`)
+- **Nome da base segue o padrão `<cliente>_esc_<data>`** — o que importa é o padrão; os exemplos
+  abaixo usam um nome de rede fictício no lugar do nome real do cliente:
+  - `redefarmacias_esc_20250715` (padrão `<cliente>_esc_<AAAAMMDD>`)
+  - `redefarmacias_loja01_20250819` (variante `<cliente>_loja<NN>_<AAAAMMDD>`)
+
+  O componente `<cliente>` costuma ser o nome da rede (às vezes concatenado com a cidade-sede),
+  sem espaço nem separador, em minúsculas.
 
   ⚠️ **O banco corrente é ROTACIONADO periodicamente** pelo próprio Alpha 7 — a data no nome muda.
   Toda string de conexão precisa ser atualizada quando isso acontece. Trocar o nome do banco **não**
   altera permissões nem regras de rede (ver [09-consultas-e-performance.md](09-consultas-e-performance.md)).
 
 - **Fuso da sessão do Postgres = `America/Sao_Paulo` (UTC-3)**, mesmo quando a operação real está em
-  `America/Cuiaba` (UTC-4). Isso quebra `CURRENT_DATE`/`NOW()::date` — ver a armadilha em
+  outro fuso (o caso medido foi uma rede em UTC-4, `America/Cuiaba`). Isso quebra
+  `CURRENT_DATE`/`NOW()::date` — ver a armadilha em
   [10-armadilhas.md](10-armadilhas.md).
 
 - Existe uma função no banco: **`normalize_str(texto)`** (remove acento + normaliza caixa), com
@@ -145,7 +152,7 @@ são por **produto+loja**. Para comparar, agregue o estoque por produto
 ## Convenções gerais do schema
 
 - **Todos os PKs/FKs são `bigint`** — e não são sequenciais pequenos. `unidadenegocio.id` chega a
-  `1050000376428`; `formapagamento.id` de PIX/IFOOD passa de 10 dígitos. Nunca assumir inteiro
+  `1050000376428`; `formapagamento.id` de PIX e de canal digital passa de 10 dígitos. Nunca assumir inteiro
   pequeno; serializar BigInt na camada de aplicação, ou fazer `::text` no SELECT.
 - **Status `char(1)`** — o significado depende da tabela. Padrão mais comum: `'A'` = Ativo/Aberto,
   `'F'` = Finalizado, `'C'` = Cancelado/Conferido (varia!), `'I'` = Inativo/Inicial,
@@ -154,9 +161,10 @@ são por **produto+loja**. Para comparar, agregue o estoque por produto
 - **Campos de texto livre são sujos** — `unidadenegocio.cidade`, `cidade.nome`, `cadernooferta.nome`,
   `classificacao.caminho`, `prescritor.nome`, `contato.contato`. Sempre normalizar
   (`UPPER(TRIM(...))`, `normalize_str`) antes de agrupar por eles.
-- **Nome de loja em relatório:** usar **`LEFT(un.nome, 2)`** — os 2 primeiros caracteres de `nome`
-  são o apelido interno (`"CV - FILIAL - CAMPO VERDE"` → `"CV"`). Não existe coluna `apelido` em
-  `unidadenegocio`. Nunca usar o `id` bigint como rótulo.
+- **Nome de loja em relatório:** usar **`LEFT(un.nome, 2)`** — `unidadenegocio.nome` segue o formato
+  `SIGLA - TIPO - CIDADE` (ex.: `"CV - FILIAL - CIDADE_B"` → `"CV"`), e os 2 primeiros caracteres são
+  o apelido interno da loja. Não existe coluna `apelido` em `unidadenegocio`. Nunca usar o `id`
+  bigint como rótulo.
 
 ## Mapa de relacionamentos principais
 
@@ -216,8 +224,10 @@ DELETE/DROP/TRUNCATE). Regras descobertas ao inspecionar o schema **antes** de e
 
 - Nem `alteracaopreco` nem `embalagem` têm FK/CHECK — toda invariante é responsabilidade de quem grava.
 - Alteração de preço **BASE** (não override por loja) grava `alteracaopreco.unidadenegocioprecoid = NULL`
-  **e** `unidadenegocioid = 1` (ESC/Escritório) — confirmado em 4.387 de 4.388 casos recentes.
-- `precoreferencial` (PMC/máximo) **não muda** — grava-se o valor atual como anterior e posterior.
+  **e** `unidadenegocioid` = o id da unidade **ESC/Escritório** (resolver por `codigo='ESC'`, o id
+  varia por base) — confirmado em 4.387 de 4.388 casos recentes.
+- `precoreferencial` (PMC/máximo) **não muda** — grava-se o valor atual como anterior e posterior
+  (⚠️ os nomes dessas colunas não estão registrados — conferir no `information_schema`).
 - `alteracaopreco.usuarioid` sempre resolve para um `usuario.id` real (mesmo sem FK formal).
 - `embalagem.ultimaalteracaoprecoid` precisa apontar para o novo registro: fazer
   `INSERT alteracaopreco ... RETURNING id` **antes** do `UPDATE embalagem`, tudo na mesma transação

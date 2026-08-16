@@ -358,7 +358,9 @@ somar os subgrupos não duplica.
 
 - **O ESCRITÓRIO (`ESC`) carrega itens corporativos/financeiros** — tem resultado alto com receita
   zero (ex.: um mês com R$ 7,2 mi de Resultado Líquido e ROB 0).
-- **IDs de sistema a excluir:** `-125` (CLOUD), `1` (ESC), `4473914` (SINC); e `un.codigo ILIKE 'BKP%'`.
+- **Unidades de sistema a excluir:** CLOUD, ESC e SINC, mais `un.codigo ILIKE 'BKP%'`.
+  ⚠️ Filtrar por **`un.codigo`**, não por id: os ids dessas unidades são **específicos de cada
+  base** (numa base medida eram, respectivamente, um id negativo, `1` e um bigint de 7 dígitos).
 - **`'2 - C.M.P.' NÃO tem contas de RECEITA.** As contas de recebimento que aparecem na tela do ERP
   (Receita de Boletos, Cartões Recebidos, Cheques, PBM, Vendas à Vista, SODEXO…) **não existem** na
   tabela `dre` — só em `lancamentofinanceiro` (tipo `E`) e nas tabelas de recebível.

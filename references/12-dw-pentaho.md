@@ -356,6 +356,7 @@ LEFT JOIN pbm               ON pbm.id = orcamentopbm.pbmid
 LEFT JOIN itemorcamento     ON itemorcamento.id = vi.itemorcamentoid
 JOIN movimentacaoestoque    ON movimentacaoestoque.id = vi.movimentacaoestoqueid
 LEFT JOIN itemdevolucaovenda itemDevolucao ON itemDevolucao.itemvendaid = vi.id
+LEFT JOIN entrega           ON entrega.orcamentoid = v.orcamentoid
 WHERE vi.status IN ('F', 'D', 'G')
 ORDER BY 1;
 ```
@@ -366,8 +367,16 @@ ORDER BY 1;
    (ver [02-vendas.md](02-vendas.md)). ⚠️ Mas **sem fallback**: quando o item não tem orçamento, grava
    `0` (o DW resolve com uma linha "sem usuário"; num relatório isso faria o vendedor sumir).
 2. ✅ **Custo vem de `movimentacaoestoque`** (`custo` e `customedio` **do momento da venda**), via
-   `itemvenda.movimentacaoestoqueid` — **JOIN direto pelo id, sem varrer por data.** É a forma barata
-   de obter custo histórico, ao contrário de varrer `movimentacaoestoque` por período.
+   `itemvenda.movimentacaoestoqueid`.
+   ⚠️⚠️ **Não copie esse JOIN achando que é o caminho rápido — ele foi MEDIDO como o mais lento.**
+   Para calcular CMV histórico, as 3 alternativas medidas no ERP real deram: varrer
+   `movimentacaoestoque` direto **54 s**, `itemvenda + custoproduto` **80 s**, e
+   `itemvenda → movimentacaoestoque` **pelo id** (exatamente este JOIN, tentando aproveitar o índice
+   `id+custo+customedio`) **118 s — a PIOR das três**. O join por id contra 32,2 mi de linhas não
+   compensa. **O DW escolheu este caminho**, mas a medição contradiz a intuição de que "join por PK é
+   barato". Ver [04-estoque.md](04-estoque.md) e D7 em [10-armadilhas.md](10-armadilhas.md).
+   (O que continua válido do DW é a **fonte**: `movimentacaoestoque.custo`/`.customedio` é o custo
+   do momento da venda, não o custo de hoje aplicado retroativamente.)
 3. ⚠️ **`valor` tem um ajuste condicional:** quando `desconto = 0` mas `valordesconto > 0`, o valor é
    recalculado como `quantidade × (valorunitario − valordesconto)` em vez de usar `valortotal`. Sinal
    de que há casos em que `valortotal` não reflete o desconto.
@@ -379,6 +388,13 @@ ORDER BY 1;
    deles — funcionam como filtro implícito de integridade e podem descartar linhas silenciosamente.
 8. ⚠️ `receitamedica`/`prescritor`/`itemdevolucaovenda` estão no `FROM` mas **não aparecem no
    SELECT** — resíduo; podem causar fan-out se a cardinalidade não for 1:1.
+9. ⚠️⚠️ **`entrega` aparece DUAS VEZES no `FROM`** — uma como `e` (`orcamento.id = e.orcamentoid`,
+   que é a usada no SELECT) e outra sem alias (`entrega.orcamentoid = v.orcamentoid`, que **não é
+   usada em lugar nenhum**). Como um orçamento pode ter mais de uma `entrega`, o segundo LEFT JOIN é
+   **fan-out puro**: multiplica a linha do item por cada entrega do orçamento, inflando
+   `quantidade`/`valor`/`custo_total` sem nenhuma contrapartida no resultado. É o achado mais grave
+   do bloco e o mais fácil de reproduzir por acidente. Ao reaproveitar esta query, **apagar o JOIN
+   sem alias.**
 
 **Colunas do `fato_venda` no DW:** `sk_filial`, `sk_tempo`, `sk_hora`, `sk_produto`, `sk_pessoa`,
 `sk_usuario`, `sk_curvaabc`, `origem_desconto`, `vendaid`, `status`, `pbm`, `coo`, `quantidade`,

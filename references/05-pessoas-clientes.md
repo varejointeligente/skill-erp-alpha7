@@ -52,8 +52,9 @@ Endereço fica em tabelas próprias:
 - **53% das pessoas têm mais de 1 contato** (105.107 de 200.000 medidas).
 - **Algumas não têm NENHUM marcado como `principal`** — filtrar por `principal` esconde telefone de
   quem tem telefone cadastrado.
-- O **mesmo número aparece 5–6× na mesma pessoa**, só mudando a digitação:
-  `66996147972`, `6696147972`, `669614-7972`, `6699614 7972`, `669614 7972`, `6699614-7972`.
+- O **mesmo número aparece 5–6× na mesma pessoa**, só mudando a digitação (exemplo com número
+  fictício, as variações são as reais): `65900010002`, `6590010002`, `659001-0002`, `6590001 0002`,
+  `659001 0002`, `6590001-0002`.
 
 **Chave de dedup validada: DDD + os 8 ÚLTIMOS dígitos.** Funde variação de máscara **e** a
 presença/ausência do 9º dígito do celular, sem fundir números de fato diferentes.
@@ -62,7 +63,7 @@ Um convênio com 20 telefones genuinamente distintos caiu só para 19 — a dedu
 legítimo.
 
 ⚠️ **Nunca "consertar" número.** Só aplicar máscara quando sobram exatamente 10 ou 11 dígitos;
-qualquer outro caso (9 dígitos truncados como `669972018`, 12+ como `666696147972`) sai como o texto
+qualquer outro caso (9 dígitos truncados como `659001000`, 12+ como `659000010002`) sai como o texto
 cru do cadastro — inventar dígito daria um telefone que não é o que está no ERP.
 
 ## `cliente` — o papel
@@ -131,9 +132,10 @@ por lista some com todo registro órfão em silêncio. Escrever
 
 ## Pessoa jurídica poluindo rankings
 
-⚠️ **632 "clientes" PJ respondem por só 1,12% da receita, mas dominam qualquer Top N por valor** —
-PAX NACIONAL, ESTADO MATO GROSSO, UNIMED, PREFEITURA e o próprio IFOOD (o marketplace entra como
-pessoa).
+⚠️ **632 "clientes" PJ respondem por só 1,12% da receita, mas dominam qualquer Top N por valor.**
+As categorias que apareceram no topo: plano funerário/assistência familiar, órgão público estadual,
+operadora de saúde, prefeitura e o próprio **marketplace de delivery** (a plataforma é cadastrada
+como pessoa, e todas as vendas do canal caem nela).
 
 Em relatório de CRM/segmentação de consumidor:
 
@@ -150,10 +152,11 @@ em relatório de carteira a cobrar. Ao casar por nome:
 
 - ⚠️ **Casar por PREFIXO ESPECÍFICO, nunca por id fixo nem por termo curto.** Uma empresa tinha
   **dois cadastros duplicados** (ids e CNPJs diferentes) — o match por nome pega os dois sozinho.
-  E termo curto vira ímã de homônimo: `%BELA%` pegaria "FAZENDA ISABELA-91" (cliente real, R$ 10
-  mil); `%FORMULA%` pegaria "MED FORMULA LTDA ME" (R$ 3,3 mil).
+  E termo curto vira ímã de homônimo: um fragmento de 4 letras tirado do nome de uma empresa irmã
+  pegou junto um **cliente comum sem relação nenhuma, com R$ 10 mil a receber**; um fragmento
+  genérico do ramo (tipo `%FORMULA%`) pegou um fornecedor homônimo (R$ 3,3 mil).
 - ⚠️ **Um caderno de oferta chamado "CONVENIO FUNCIONARIOS" NÃO identifica funcionários.** Medido:
-  **733 pessoas distintas** compram por ele em 12 meses, incluindo PREFEITURA, HOSPITAL, empresas de
+  **733 pessoas distintas** compram por ele em 12 meses, incluindo prefeitura, hospital, empresas de
   dedetização, fazendas e escritórios de advocacia. E a conta agregadora de funcionários tem **ZERO**
   vendas por esse caderno — as duas coisas nem se cruzam.
 

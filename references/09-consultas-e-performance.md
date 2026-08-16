@@ -183,7 +183,7 @@ LEFT JOIN (SELECT DISTINCT usuarioid FROM farmaceutico WHERE status='A') f
 | Produto = mercadoria (exclui serviço/taxa) | `p.tipo = 'M'` |
 | Loja ativa | `un.status = 'A'` |
 | Excluir escritório | `un.codigo <> 'ESC'` (ou `un.id <> 1`) |
-| Excluir CDs e não-lojas | `un.codigo NOT ILIKE 'CD%' AND un.codigo NOT IN ('ESC','SINC','CLOUD','17')` |
+| Excluir CDs e não-lojas | `un.codigo NOT ILIKE 'CD%' AND un.codigo NOT IN ('ESC','SINC','CLOUD', <códigos de loja fora do grupo>)` — os códigos de sistema são convenção do ERP; a lista de lojas a excluir é cadastro do cliente (ver [08-logistica-entregas.md](08-logistica-entregas.md)) |
 | NF pendente de recebimento | `nf.status = 'I'` (**nunca** `IN ('I','A')`) |
 | NF recebida | `nf.datahoraentrada IS NOT NULL` |
 | Conta a pagar em aberto | `cp.status = 'A'` |

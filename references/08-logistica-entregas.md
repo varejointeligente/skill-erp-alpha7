@@ -15,15 +15,15 @@
 
 | Coluna | Tipo | Descrição |
 | --- | --- | --- |
-| `id` | bigint PK | ⚠️ **Valores grandes e não sequenciais** (64706, 99651, 188259, 1731008, 1050000376428, 5500380…) |
-| `codigo` | varchar (unique) | Código curto: `'01'`…`'19'`, `'CD'`, `'CD2'`, `'ESC'`, `'SINC'`, `'CLOUD'`, `'BKP…'` |
+| `id` | bigint PK | ⚠️ **Valores grandes e não sequenciais** (ordens de grandeza observadas: 64706, 99651, 188259, 1731008, 1050000376428, 5500380…) — **os valores concretos são de cada base, não do ERP** |
+| `codigo` | varchar (unique) | Código curto: `'01'`…`'NN'` para lojas, mais os códigos de sistema `'CD'`, `'CD2'`, `'ESC'`, `'SINC'`, `'CLOUD'`, `'BKP…'` |
 | `nome` | varchar | Nome completo — **os 2 primeiros caracteres são o apelido interno** |
 | `nomefantasia` | varchar | |
 | `razaosocial` | varchar | |
 | `status` | char(1) | `'A'` Ativa, `'I'` Inativa |
 | `cnpj` | varchar | |
 | `cidade` | varchar | ⚠️ **Texto livre** — grafia inconsistente entre lojas da mesma cidade |
-| `estado` | varchar | Sigla (ex.: `MT`), coluna separada de `cidade` |
+| `estado` | varchar | Sigla da UF (2 letras), coluna separada de `cidade` |
 | `grupounidadenegocioid` | bigint FK | → `grupounidadenegocio.nome` |
 
 ### ⚠️⚠️ Os IDs variam entre bancos — nunca hardcodar
@@ -48,52 +48,60 @@ ORDER BY un.codigo;
 
 ### CTE canônica `lojas_ativas`
 
-O filtro varia por contexto; as variantes usadas na prática:
+O filtro varia por contexto. Os códigos de **sistema** (`ESC`, `SINC`, `CLOUD`, `BKP…`, `CD…`) são
+convenção do ERP e valem em qualquer base; qualquer código de **loja** (numérico, `'01'`…`'NN'`) é
+cadastro do cliente e precisa ser levantado na base em uso. Nos exemplos, `'<LOJA_FORA>'` é o
+código de uma loja que saiu do grupo e `'<NAO_VAREJO_1>'`… são unidades de empresas irmãs:
 
 ```sql
 -- Padrão para relatório de venda/estoque (exclui TODOS os CDs)
 WHERE un.status = 'A'
   AND un.codigo NOT ILIKE 'CD%'
-  AND un.codigo NOT IN ('ESC','SINC','CLOUD','17')
+  AND un.codigo NOT IN ('ESC','SINC','CLOUD','<LOJA_FORA>')
 
 -- Quando o CD PRINCIPAL deve aparecer como loja própria (retaguarda/logística)
 WHERE un.status = 'A'
-  AND un.codigo NOT IN ('CD2','CD3','CD4','ESC','SINC','17')
+  AND un.codigo NOT IN ('CD2','CD3','CD4','ESC','SINC','<LOJA_FORA>')
 
 -- Quando também se excluem unidades não-varejo
-  AND un.codigo NOT IN ('12','13','14','15')
+  AND un.codigo NOT IN ('<NAO_VAREJO_1>','<NAO_VAREJO_2>','<NAO_VAREJO_3>','<NAO_VAREJO_4>')
 
 -- DRE/tesouraria (consolidado da empresa: exclui só backup/cloud/teste)
 WHERE un.codigo NOT ILIKE 'BKP%'
-  AND un.codigo NOT IN ('CLOUD','SINC','17')
+  AND un.codigo NOT IN ('CLOUD','SINC','<LOJA_FORA>')
 ```
 
-**Códigos especiais observados nesta rede:**
+**Papéis de unidade observados (o código de sistema é convenção do ERP; o id, não):**
 
 | Código | Papel |
 | --- | --- |
-| `ESC` (id 1) | **Escritório** — concentra pagamentos centralizados e convênios com empresas. Não é loja, mas tem lançamento próprio; num filtro de crediário chegou a **35% de todo o valor em aberto** |
+| `ESC` | **Escritório** — concentra pagamentos centralizados e convênios com empresas. Não é loja, mas tem lançamento próprio; num filtro de crediário chegou a **35% de todo o valor em aberto** |
 | `CD` | Centro de distribuição principal — **é uma unidade operacional real**, com colaboradores, transferências e Curva D próprios |
 | `CD2`, `CD3`, `CD4` | CDs secundários/duplicados/inativos |
-| `SINC`, `CLOUD` (id −125), `BKP…` | Unidades de sistema/backup — sempre excluir |
-| `17` | Unidade que **saiu do grupo** — excluir sempre; todo relatório novo já deve nascer com `NOT IN (..., '17')` |
-| `12`, `13`, `14`, `15` | Unidades **não-varejo** (empresas irmãs: manipulação, vacinas, distribuidora, estética). São `unidadenegocio` reais, normalmente sem venda no período |
+| `SINC`, `CLOUD`, `BKP…` | Unidades de sistema/backup — sempre excluir |
+| código de loja fechada / que saiu do grupo | Excluir sempre. Não há flag para isso: é **conhecimento operacional do cliente**, precisa ser perguntado. Todo relatório novo já deve nascer com a lista de exclusão |
+| códigos de unidades **não-varejo** | Empresas irmãs do grupo (manipulação, vacinas, distribuidora, estética são combinações comuns). São `unidadenegocio` reais, normalmente sem venda no período — a lista concreta varia por cliente |
+
+⚠️ **Os ids** dessas unidades (inclusive `ESC`, `CLOUD`, `SINC`) são **específicos de cada base** —
+filtrar por `codigo`, nunca por `id` copiado de outro cliente.
 
 ⚠️ Ao filtrar `NOT ILIKE 'CD%'`, o **CD principal também é barrado** — se ele deve aparecer, usar a
 lista explícita `NOT IN ('CD2','CD3','CD4', ...)`.
 
 ### Nome da loja em relatórios
 
-**`LEFT(un.nome, 2)`** — os 2 primeiros caracteres de `nome`:
+**`LEFT(un.nome, 2)`** — os 2 primeiros caracteres de `nome`. O formato do cadastro é
+**`SIGLA - TIPO - CIDADE`** (as siglas e cidades abaixo são genéricas):
 
 | `un.nome` | Rótulo |
 | --- | --- |
-| `"MA - MATRIZ - PRIMAVERA DO LESTE"` | `MA` |
-| `"CV - FILIAL - CAMPO VERDE"` | `CV` |
-| `"DT - DESCONTAO"` | `DT` |
+| `"MA - MATRIZ - CIDADE_A"` | `MA` |
+| `"CV - FILIAL - CIDADE_B"` | `CV` |
+| `"XX - <NOME FANTASIA>"` (só 1 hífen) | `XX` |
 
-Não existe coluna `apelido`. ⚠️ Unidades sem o padrão `"XX - …"` (ex.: `AMO VACINAS`) geram um código
-de 2 letras "aleatório" (`AM`) — aceitável, normalmente já são filtradas por `receita > 0`.
+Não existe coluna `apelido`. ⚠️ Unidades sem o padrão `"XX - …"` (as não-varejo costumam ser
+cadastradas só com a razão/nome fantasia) geram um código de 2 letras "aleatório" — aceitável,
+normalmente já são filtradas por `receita > 0`.
 
 **Nome reduzido alternativo** (usado no DW), que corta até o 2º hífen:
 
@@ -109,10 +117,10 @@ END AS nome_reduzido
 
 ### ⚠️ `unidadenegocio.cidade` é texto livre
 
-Grafia inconsistente entre lojas diferentes para a mesma cidade: `"PRIMAVERA DO LESTE"` maiúscula
-numa loja, `"Primavera do Leste"` mista noutra. **Sem normalizar, a mesma cidade vira 2 linhas no
-agrupamento** — caso real: R$ 901,83 em "Primavera do Leste" separado de R$ 53.171,34 em
-"PRIMAVERA DO LESTE" na mesma consulta.
+Grafia inconsistente entre lojas diferentes para a mesma cidade: `"CIDADE_A"` maiúscula
+numa loja, `"Cidade_a"` mista noutra. **Sem normalizar, a mesma cidade vira 2 linhas no
+agrupamento** — caso real: R$ 901,83 na grafia mista separado de R$ 53.171,34 na grafia maiúscula
+da **mesma cidade**, na mesma consulta.
 
 ```sql
 GROUP BY UPPER(TRIM(un.cidade))
@@ -231,17 +239,19 @@ Cobertura: **100% têm rua/número/bairro, 88% têm CEP.**
 
 ### ⚠️⚠️ `cidade.nome` é texto livre e está CORROMPIDO
 
-A MESMA cidade aparece como:
+A MESMA cidade aparece em várias grafias. Padrões de corrupção medidos (nomes de cidade
+substituídos por genéricos, os defeitos são reais):
 
-- `PRIMAVERA DO LESTE`, **`PRIMAVERA DO LEESTEE`**, `PRIMAVERA  DO LESTE` (2 espaços),
-  `PRIMAVERA DO LESTEE`
-- `BARRA DO GARÇAS`, **`BARRA DO GARÇASS`**, `BARRA DO GARÇAS MT`
-- `campo verde mt` (minúsculas)
+- letra duplicada no meio e no fim: `CIDADE_A`, **`CIIDADE_AA`**, `CIDADE_AA`
+- espaço duplo: `CIDADE  A` (2 espaços)
+- sigla da UF colada no fim: `CIDADE_C`, `CIDADE_C <UF>`
+- acento presente numa grafia e ausente/duplicado noutra (`CIDADE_ÇAS` × `CIDADE_ÇASS`)
+- tudo em minúsculas: `cidade_b mt`
 
-**Comparar cidade por igualdade perde ~60% das entregas de Primavera do Leste.**
+**Comparar cidade por igualdade perde ~60% das entregas da cidade de maior volume.**
 
-→ Casar por um **TRECHO ESTÁVEL** do nome (`PRIMAVERA`, `GARCA`, `POXOR`, `CAMPO VERDE`) e devolver o
-nome canônico. O `numero` também é sujo (`00`, `S/N`, "COMPRE E RETIRE").
+→ Casar por um **TRECHO ESTÁVEL** do nome (o prefixo sem acento que sobrevive a todas as variantes)
+e devolver o nome canônico. O `numero` também é sujo (`00`, `S/N`, "COMPRE E RETIRE").
 
 ⚠️ Para agrupar televendas/entregas por cidade, preferir **`unidadenegocio.cidade` normalizada** (da
 loja) a `cidade.nome` (do endereço), ou — melhor ainda — um cadastro central cidade↔loja mantido
@@ -256,14 +266,14 @@ medidas com endereços **reais** da rede:
 
 Amostra de 12 endereços por cidade:
 
-| Cidade | Taxa de acerto |
+| Cidade (interior, ~15k–60k hab.) | Taxa de acerto |
 | --- | --- |
-| Primavera do Leste | 67% |
-| Campo Verde | 67% |
-| Poxoréu | 58% |
-| Barra do Garças | 50% |
+| CIDADE_A (sede da rede) | 67% |
+| CIDADE_B | 67% |
+| CIDADE_D | 58% |
+| CIDADE_C | 50% |
 
-Metade das entregas de Barra do Garças ficaria sem pino. Parte das falhas é lixo de cadastro
+Metade das entregas da pior cidade ficaria sem pino. Parte das falhas é lixo de cadastro
 ("COMPRE E RETIRE", número `00`, "rua K"), mas várias são endereços legítimos.
 
 → **Antes de propor OSM como geocodificador em qualquer cidade do interior, MEDIR a cobertura — não
@@ -286,7 +296,7 @@ ativada), **não** "endereço inexistente" — logar explicitamente, senão o ma
 - **Máximo 1 consulta por segundo** e `User-Agent` identificável. **Nunca** disparar em paralelo — o
   IP é bloqueado. A fila é sequencial.
 - **Cache obrigatório**, com chave = endereço normalizado **e a cidade já canônica** (assim
-  "PRIMAVERA DO LEESTEE" e "PRIMAVERA DO LESTE" compartilham a mesma entrada).
+  "CIIDADE_AA" e "CIDADE_A" compartilham a mesma entrada).
 - **Teto de endereços novos por requisição** (~40). Sem ele a tela travava ~4 minutos: uma loja tem
   ~200 entregas pendentes × 1 s cada. Quem fica de fora **não some da lista** — aparece sem pino, com
   aviso, e a próxima chamada continua de onde parou.

@@ -130,7 +130,13 @@ Agrupar por `cl.nome` dá ~100 subcategorias — granular demais para visão exe
 direto (fan-out). O `MIN(...)` acima serve para exibição (1 linha por produto); para **filtrar**,
 usar uma CTE `DISTINCT (produtoid, chave)` + `EXISTS`.
 
-### As 9 categorias MACRO (nomes exatos nesta base)
+### As 9 categorias MACRO (nomes exatos observados em UMA base)
+
+⚠️ **Isto é cadastro do cliente, não estrutura do ERP.** A árvore de `classificacao` é livre — outra
+rede pode ter outra quantidade e outros nomes. Levantar por
+`SELECT DISTINCT split_part(caminho,' > ',2) FROM classificacao WHERE caminho ILIKE 'PRINCIPAL > %'`
+antes de hardcodar qualquer nome. O que é **estrutural** (e vale sempre) é o formato do `caminho` e
+a necessidade da chave composta `categoria::nivel3`.
 
 **PROPAGADO · GENERICOS · PERFUMARIA · CONVENIENCIA · SIMILAR · SUPLEMENTOS · VAREJO · SERVIÇOS ·
 USO/CONSUMO**

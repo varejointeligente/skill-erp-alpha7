@@ -258,8 +258,8 @@ não dá para usar null-check para detectar pendência aqui.
 | Oferta do Dia | `PADRÃO_SEGUNDA` … `PADRÃO_SEXTA GENERICO` (casar com `normalize_str`, tem acento). ⚠️ **Sábado e domingo não têm caderno cadastrado** — a categoria fica vazia nesses dias, não é bug |
 | 72 Horas | contém `72 HORA` (com ou sem espaço) — cobre `007 - PADRÃO 72 HORAS DE OFERTA <loja>` |
 | Leve + Pague | `009 - LEVE+ PAGUE-` e outros — mas o certo é filtrar por `itemcadernooferta.tipooferta='L'` |
-| Convênio | `Demaclub`, `500 - CONVENIO FUNCIONARIOS`, `501 - CONVENIO EMPRESAS` |
-| Canal | `IFOOD` |
+| Convênio | nome do clube de desconto da rede + `500 - CONVENIO FUNCIONARIOS`, `501 - CONVENIO EMPRESAS` (⚠️ **a carteira de convênios é de cada cliente** — levantar por `SELECT nome FROM cadernooferta`) |
+| Canal | nome do marketplace de delivery / plataforma de e-commerce (idem: varia por cliente) |
 | Preço controlado | `Preço Controlado Plugpharma`, `PRC - 000 - PRODUTOS EM PROMOÇÃO`, `PRC - 999 - DESCONTO AUTOMÁTICO POR GRUPO` |
 | Cupom médico | `CUPOM-MEDICO` |
 
@@ -470,15 +470,23 @@ Histórico nativo de alteração de preço do ERP.
 
 | Coluna | Descrição |
 | --- | --- |
-| `precovendaanterior` / `precovendaposterior` | Preço antes/depois |
-| `precoreferencialanterior` / `...posterior` | PMC/máximo (não muda em alteração de preço de venda) |
+| `precovendaanterior` / `precovendaposterior` | Preço de venda antes/depois — **os únicos nomes de coluna de par anterior/posterior confirmados** |
 | `datahora` | Quando mudou |
-| `unidadenegocioid` | ⚠️ Em alteração de preço **BASE** é sempre `1` (ESC/Escritório) |
+| `unidadenegocioid` | ⚠️ Em alteração de preço **BASE** é sempre a unidade **ESC/Escritório** |
 | `unidadenegocioprecoid` | ⚠️ **NULL** em alteração BASE; preenchido em override por loja |
 | `usuarioid` | Sempre resolve para um `usuario.id` real (100% dos casos recentes), embora sem FK formal |
 
+⚠️ **`precoreferencial` (PMC/máximo) não muda numa alteração de preço de venda — grava-se o valor
+atual como anterior e posterior.** É o que a inspeção do schema registrou, em prosa. 📌 **Lacuna:**
+os **nomes** das colunas que guardam esse par anterior/posterior do `precoreferencial` **não foram
+registrados** — descobrir com
+`SELECT column_name FROM information_schema.columns WHERE table_name = 'alteracaopreco'` antes de
+escrever o `INSERT`. Não deduzir o nome por analogia com `precovenda*`.
+
 Confirmado por amostragem: **4.387 de 4.388** alterações de base dos últimos 30 dias usam
-`unidadenegocioprecoid = NULL` **e** `unidadenegocioid = 1`.
+`unidadenegocioprecoid = NULL` **e** `unidadenegocioid` = o id do **ESC/Escritório** (na base medida
+esse id era `1`; ⚠️ **ids de unidade variam por base** — resolver por
+`SELECT id FROM unidadenegocio WHERE codigo = 'ESC'`, nunca hardcodar).
 
 `embalagem.ultimaalteracaoprecoid` aponta para o registro mais recente.
 
@@ -493,8 +501,10 @@ Credencial **separada** da de leitura, com o mínimo:
 2. `UPDATE embalagem SET precovenda = ..., ultimaalteracaoprecoid = <novo id> WHERE id = ...`.
 3. Tudo na **mesma transação** (`BEGIN` / `SELECT ... FOR UPDATE` na linha da embalagem / `COMMIT` /
    `ROLLBACK`).
-4. `precoreferencial` não muda — gravar o valor atual como anterior **e** posterior.
-5. Alteração BASE → `unidadenegocioprecoid = NULL`, `unidadenegocioid = 1`.
+4. `precoreferencial` não muda — gravar o valor atual como anterior **e** posterior (⚠️ confirmar os
+   nomes dessas duas colunas no `information_schema` antes; não estão registrados aqui).
+5. Alteração BASE → `unidadenegocioprecoid = NULL`, `unidadenegocioid` = id do **ESC/Escritório**
+   resolvido por `codigo = 'ESC'` na base corrente.
 6. Exigir que quem aprovou tenha um `usuario.id` real no ERP — falhar **antes** de abrir a conexão de
    escrita se não tiver.
 7. **Nunca "fingir que aplicou"**: sem a credencial configurada, falhar com mensagem clara e gravar o
@@ -511,11 +521,13 @@ bloqueio.
 
 Candidato = qualquer um dos dois:
 
-1. **Preço quebrado** = centavos do preço fora de `{0,90 ; 0,99}`. Validado no banco: **~89% do
-   catálogo ativo já termina em um desses dois valores** — é a convenção real da casa, não um número
-   arbitrário.
+1. **Preço quebrado** = centavos do preço fora do conjunto de terminações que a rede usa. ⚠️ **Quais
+   terminações são "certas" é convenção COMERCIAL do cliente, não regra do ERP** — medir antes:
+   numa rede, `{0,90 ; 0,99}` cobriam **~89% do catálogo ativo**, e foi isso que tornou o critério
+   defensável. Rodar a mesma contagem na base em uso antes de adotar o conjunto.
 2. **Margem abaixo do objetivo** = margem (custo médio consolidado) menor que a margem objetiva da
-   categoria/subcategoria. Fallback quando a categoria não tem cadastro: **20%**.
+   categoria/subcategoria. ⚠️ A margem objetiva é **cadastro externo ao ERP**, por cliente; o
+   fallback de **20%** usado quando a categoria não tem cadastro também é decisão do cliente.
 
 Volume real: ~13,1 mil embalagens candidatas (consolidado por produto).
 
