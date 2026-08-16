@@ -1,5 +1,6 @@
 {
   "name": "varejointeligente-alpha7",
+  "description": "Skills do Claude para o ERP Alpha 7 no varejo farmaceutico.",
   "owner": {
     "name": "Varejo Inteligente",
     "url": "https://github.com/varejointeligente"
