@@ -117,6 +117,7 @@ A saída é JSON: `{"result": ...}` com exit 0, ou `{"error": "Classe: mensagem"
 | `cadastrar-cliente` | `{nome, cpf, sexo, dataNascimento, ...}` | Cadastro rápido de pessoa/cliente |
 | `cadastrar-caderno` | `{nome, dataHoraInicial, dataHoraFinal, unidadesNegocio:[ids], itens:[...]}` | Cria caderno de oferta + lojas + itens |
 | `caderno-item-add <idCaderno>` | `{itens:[{embalagemId\|codigoBarras, tipoOferta, precoOferta\|descontoOferta, leve, pague}]}` | Acrescenta ofertas a um caderno |
+| `caderno-loja-add <idCaderno>` | `{codigos:["01","03"]}` ou `{unidadesNegocio:[ids]}` | Põe lojas num caderno que já existe |
 
 `<Dominio>`/`<Tipo>` é o nome da entidade sem sufixo: `GrupoConsumidores`, `Pessoa`,
 `CadernoOferta`, `Embalagem`.
@@ -130,11 +131,9 @@ servidor** (`--preparar` mostra o host do perfil) e espere o "pode".
 
 ## Regras que valem para toda chamada
 
-1. **Nome de campo no JSON: sigla inicial em minúsculas.** O campo começa em minúscula, e uma
-   sigla no começo do nome vai inteira em minúsculas: `id`, `cpf`, `nome`, `dataHoraInicial`.
-   **Campo com nome errado não dá erro: é descartado em silêncio.** Medido: `{"ID": 5}` chega como
-   id 0 e `{"CPF": "..."}` chega como CPF vazio; `{"id": 5}` e `{"cpf": "..."}` funcionam. O mesmo
-   vale na resposta — o id volta em `id`.
+1. **Nome de campo no JSON: confira a grafia; maiúscula ou minúscula tanto faz.** `id` e `ID`,
+   `cpf` e `CPF` são aceitos igualmente. Mas **campo com nome errado não dá erro: é descartado em
+   silêncio**, e o registro é gravado sem ele. Na resposta, o id sempre volta em `id`, minúsculo.
 
 2. **Escrita não se repete às cegas.** Se a chamada falhar no meio, estourar o tempo ou a conexão
    cair, a gravação pode ter acontecido. Confira (por SQL ou por uma leitura no CLI) antes de
@@ -428,6 +427,9 @@ O que só aparece depois de errar:
 - **A oferta é por loja.** O caderno só vale nas unidades participantes; para listar as ofertas de
   um caderno com o id de cada item, o SQL em `itemcadernooferta` é o caminho mais direto.
 - **`caderno-item-add` não é idempotente** — repetir duplica a oferta.
+- **`caderno-loja-add` ainda não foi validado contra um ERP** e também não confere se a loja já
+  participa: repetir duplica a participação. Devolve o `idParticipacao` de cada loja, que é o que
+  `entity-delete UnidadeNegocioParticipanteCadernoOferta <id>` precisa para desfazer.
 - **Embalagem é o SKU.** Caixa e unidade são embalagens diferentes do mesmo produto; ofertar a
   errada é ofertar o que não gira.
 
