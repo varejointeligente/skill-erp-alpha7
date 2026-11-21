@@ -1,6 +1,6 @@
 ---
 name: erp-alpha7
-description: Base de conhecimento do ERP Alpha 7, o ERP de farmácia cujo banco é PostgreSQL em bases nomeadas no padrão cliente_esc_data. Use SEMPRE que aparecer "Alpha 7", "Alpha7", "base _esc_", ou tabelas/colunas desse ERP — `pessoa`, `embalagem`, `venda`, `itemvenda`, `unidadenegocio`, `movimentacaoestoque`, `precoembalagemunidadenegocio`, `estoqueminimoprodutounidadenegocio`, `cadernooferta`, `contapagar`, `pedidocompra`, `orcamento`, `liberacaousuario`, `dre`. Use também, mesmo sem o ERP ser nomeado, quando a tarefa for escrever ou revisar SQL/relatório de farmácia sobre faturamento, margem, CMV, ruptura, cobertura, giro, curva ABC, elasticidade, mínimo/máximo por loja, transferência entre lojas, entregas, crediário, contas a pagar/receber, DRE, caderno de ofertas, alteração de preço ou comissão de vendedor — e o banco for PostgreSQL. Consulte antes de escrever a query — nesse ERP quase tudo passa por `pessoa` e por `embalagem`, e ignorar essas duas camadas produz número errado sem erro aparente.
+description: Base de conhecimento do ERP Alpha 7, o ERP de farmácia cujo banco é PostgreSQL em bases nomeadas no padrão cliente_esc_data. Use SEMPRE que aparecer "Alpha 7", "Alpha7", "base _esc_", ou tabelas/colunas desse ERP — `pessoa`, `embalagem`, `venda`, `itemvenda`, `unidadenegocio`, `movimentacaoestoque`, `precoembalagemunidadenegocio`, `estoqueminimoprodutounidadenegocio`, `cadernooferta`, `contapagar`, `pedidocompra`, `orcamento`, `liberacaousuario`, `dre`. Use também, mesmo sem o ERP ser nomeado, quando a tarefa for escrever ou revisar SQL/relatório de farmácia sobre faturamento, margem, CMV, ruptura, cobertura, giro, curva ABC, elasticidade, mínimo/máximo por loja, transferência entre lojas, entregas, crediário, contas a pagar/receber, DRE, caderno de ofertas, alteração de preço ou comissão de vendedor — e o banco for PostgreSQL. Use ainda quando o pedido for OPERAR o Alpha 7 (gravar, não só consultar): criar grupo de consumidores/grupo de clientes e pôr clientes nele, incluir produto em sugestão de transferência entre lojas e gerar o pedido de transferência, cadastrar cliente, criar ou alterar caderno de oferta — isso é feito pelo CLI das facades do servidor, não por SQL. Consulte antes de escrever a query — nesse ERP quase tudo passa por `pessoa` e por `embalagem`, e ignorar essas duas camadas produz número errado sem erro aparente.
 ---
 
 # ERP Alpha 7 — base de conhecimento
@@ -28,6 +28,7 @@ keys declaradas, e o significado de cada `char(1)` depende da tabela — nada di
 | Performance, joins canônicos, conexão, particularidades do Postgres | `references/09-consultas-e-performance.md` |
 | "Por que esse número está errado?" | `references/10-armadilhas.md` |
 | O gestor usou um termo que você não reconhece | `references/11-glossario.md` |
+| **Gravar** no ERP: grupo de consumidores, transferência entre lojas, cadastro de cliente, caderno de oferta, qualquer facade | `references/12-operar-pelo-cli.md` |
 
 Quando a tarefa cruza áreas, leia as duas — a interseção é onde moram os erros.
 
@@ -100,7 +101,34 @@ em tabela ou JSON. Antes de rodar consulta pesada, leia
 `references/09-consultas-e-performance.md`: nessa base há queries que passam de 14 minutos por uma
 escolha de operador, e alternativas ~1.700× mais rápidas para o mesmo resultado.
 
-Consulta de leitura para conferir dado é livre. **Escrita no Alpha 7 é possível e já foi feita**
-(alteração de preço), mas o banco quase não tem constraint declarada: quem escreve precisa replicar
-as invariantes à mão, e isso exige confirmação explícita do cliente antes — as invariantes estão em
-`references/07-compras-precificacao.md`.
+Consulta de leitura para conferir dado é livre. **Escrita direto no banco é possível e já foi
+feita** (alteração de preço), mas o banco quase não tem constraint declarada: quem escreve precisa
+replicar as invariantes à mão, e isso exige confirmação explícita do cliente antes — as invariantes
+estão em `references/07-compras-precificacao.md`. Quando existe facade para a operação, grave por
+ela (seção seguinte), não por SQL.
+
+## Operando o ERP (gravar)
+
+`scripts/alpha7_cli.py` chama as facades do servidor de aplicação do Alpha 7 — as mesmas operações
+da tela do A7Pharma, com a validação, a permissão e o log do ERP. É o caminho para gravar: criar
+grupo de consumidores e vincular pessoas, solicitar transferência entre lojas, cadastrar cliente,
+criar e alterar caderno de oferta, ou
+chamar qualquer outra facade. **Leia `references/12-operar-pelo-cli.md` antes da primeira chamada**
+— o nome do campo no JSON tem regra própria e campo errado é descartado sem erro.
+
+O padrão é **SQL acha, CLI grava, SQL confere**: levante os ids por consulta, grave pelo CLI e
+confira o resultado por consulta.
+
+Três regras que não se negociam:
+
+- **Credencial é digitada pela pessoa, numa janela que você abre.** Se o perfil não existir,
+  avise o usuário e execute `scripts/alpha7_credenciais.py`: abre uma janela como a do login do
+  A7Pharma (lista de servidores, usuário e senha), e a senha vai direto para o perfil local. Não peça senha na conversa, não leia
+  o arquivo do perfil, e não mande o usuário rodar comando — ele não é técnico.
+- **Toda gravação exige `--confirmar-escrita`, e a flag só entra depois do "pode" do usuário**, com
+  o que será gravado e o servidor de destino à vista. É o ERP de produção; não há ambiente de teste.
+- **Escrita não se repete às cegas.** Falhou ou estourou o tempo: confira o que ficou gravado antes
+  de tentar de novo.
+
+A maioria das redes roda Windows: chame com `python` (não `python3`) e passe o payload por
+`--stdin-file`, nunca JSON entre aspas na linha de comando.

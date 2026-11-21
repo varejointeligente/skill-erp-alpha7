@@ -10,6 +10,7 @@
 - [`usuario` — colaboradores e setores](#usuario--colaboradores-e-setores)
 - [`farmaceutico`](#farmaceutico)
 - [`prescritor` / `receitamedica` / `receitamedicaitem`](#prescritor--receitamedica--receitamedicaitem)
+- [Grupo de consumidores](#grupo-de-consumidores)
 - [Métricas de cliente: RFM/RFV e curva ABC de clientes](#métricas-de-cliente-rfmrfv-e-curva-abc-de-clientes)
 
 ---
@@ -287,6 +288,19 @@ prescritos** — 6,08% do faturamento e 3,51% dos cupons da rede.
 - "Médicos mais prescritos" = ranking por **valor captado**, não por nº de receitas.
 - Ranking de itens por médico: agrupar por **`produto`**, não por `embalagem` (o interesse é o
   medicamento, não o SKU).
+
+## Grupo de consumidores
+
+O "grupo de clientes" do Alpha 7 chama-se **grupo de consumidores**: `grupoconsumidores` (`id`,
+`nome` único, `status` `A`/`I`) e o vínculo `pessoagrupoconsumidores` (`grupoconsumidorid`,
+`pessoaconsumidorid`). **O vínculo aponta para `pessoa.id`, não para `cliente.id`.** Serve para
+direcionar caderno de oferta (`cadernoofertagrupoconsumidores`) e regras de fidelidade.
+
+Os nomes de tabela e coluna acima ainda não foram conferidos numa base — confirmar no
+`information_schema`. Para **criar grupo e vincular pessoas**, ver
+[12-operar-pelo-cli.md](12-operar-pelo-cli.md#grupo-de-consumidores-grupo-de-clientes).
+
+---
 
 ## Métricas de cliente: RFM/RFV e curva ABC de clientes
 

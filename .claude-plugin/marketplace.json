@@ -9,7 +9,7 @@
     {
       "name": "erp-alpha7",
       "source": "./",
-      "description": "Base de conhecimento do ERP Alpha 7 para varejo farmaceutico: schema PostgreSQL, consultas validadas, metricas canonicas e catalogo de armadilhas."
+      "description": "Base de conhecimento do ERP Alpha 7 para varejo farmaceutico: schema PostgreSQL, consultas validadas, metricas canonicas, catalogo de armadilhas e CLI para operar o ERP pelas facades do servidor."
     }
   ]
 }

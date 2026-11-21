@@ -46,8 +46,12 @@ skills/erp-alpha7/
     09-consultas-e-performance.md joins canônicos, performance, conexão, Postgres nessa base
     10-armadilhas.md              60+ casos reais: sintoma → causa → correção → prevenção
     11-glossario.md               vocabulário do negócio ↔ tabela/coluna/valor
+    12-operar-pelo-cli.md         gravar no ERP pelas facades: grupo de consumidores, caderno de oferta
   scripts/
     consultar_alpha7.py           consulta somente leitura no PostgreSQL
+    alpha7_credenciais.py         janela de login (servidores do A7Pharma, usuário, senha); grava um perfil local
+    alpha7_cli.py                 executa o CLI das facades do servidor de aplicação
+    alpha7-cli.jar                o CLI (Java 17) — vem pronto na instalação
 ```
 
 ## Consultar o banco
@@ -68,6 +72,36 @@ rede de proteção.
 
 > O nome da base **rotaciona** — o Alpha 7 troca a data periodicamente. Se uma conexão que
 > funcionava parou, confira `--bases` antes de investigar a query.
+
+## Operar o ERP (gravar)
+
+Para gravar, a skill não usa SQL: usa o **CLI das facades** do servidor de aplicação do Alpha 7 —
+as mesmas operações da tela do A7Pharma, com validação, permissão e log do ERP. Hoje cobre grupo
+de consumidores (criar grupo, vincular e remover pessoas), transferência entre lojas (incluir
+produto na sugestão e gerar o pedido), cadastro de cliente, caderno de oferta e a chamada
+genérica de qualquer facade.
+
+```
+python skills/erp-alpha7/scripts/alpha7_credenciais.py      # janela de login: servidor (lista do A7Pharma), usuário e senha
+python skills/erp-alpha7/scripts/alpha7_cli.py --preparar   # confere libs, Java e o CLI
+python skills/erp-alpha7/scripts/alpha7_cli.py cadastrar-grupo-consumidores --stdin-file grupo.json --confirmar-escrita
+```
+
+(`python3` no Linux/macOS.) No uso normal ninguém digita esses comandos: o Claude abre a janela de
+acesso e roda o CLI; a pessoa só preenche a janela e confirma as gravações. O que precisa na máquina:
+
+- **A7Pharma instalado** (as libs do cliente e o JRE 17 saem dele). Sem a instalação, o script
+  baixa as libs do servidor da rede e precisa de um Java 17+.
+- **Nada para compilar ou instalar à parte**: o `alpha7-cli.jar` vem junto na instalação do plugin.
+- **Rede até o servidor de aplicação** do Alpha 7 (porta 8443 por padrão).
+
+O perfil de credenciais fica em `%APPDATA%\erp-alpha7\` (Windows) ou `~/.config/erp-alpha7/`, fora
+do repositório. Todo comando que grava exige `--confirmar-escrita`. Detalhes, regras e roteiros em
+[`references/12-operar-pelo-cli.md`](skills/erp-alpha7/references/12-operar-pelo-cli.md).
+
+Os comandos de grupo de consumidores foram validados contra um ERP de produção: criar, vincular,
+pular repetido, listar, remover pessoa, inativar e excluir. Só a entrada por CPF ainda não.
+A transferência entre lojas também: incluir, alterar e excluir sugestão, gerar e excluir o pedido.
 
 ## Manter viva
 
